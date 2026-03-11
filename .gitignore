@@ -16,6 +16,7 @@ test_*.py
 test_*.json
 *.txt
 !requirements.txt
+!runtime.txt
 api_response*.json
 coex_eum.json
 eum_*.json

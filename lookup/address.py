@@ -12,14 +12,14 @@ _JUSO_URL = "https://www.juso.go.kr/addrlink/addrLinkApi.do"
 _VWORLD_GEOCODE_URL = "https://api.vworld.kr/req/address"
 
 
-def _vworld_geocode(address_full: str, vworld_key: str, timeout: int) -> tuple[str, str]:
+def _vworld_geocode(address_full: str, vworld_key: str, timeout: int, domain: str = "localhost") -> tuple[str, str]:
     """VWORLD 지오코딩 API로 지번주소 → 경도/위도 변환. 실패 시 ('', '') 반환."""
     try:
         resp = requests.get(_VWORLD_GEOCODE_URL, params={
             "service": "address", "request": "getcoord", "version": "2.0",
             "crs": "epsg:4326", "address": address_full,
             "refine": "true", "simple": "false", "format": "json",
-            "type": "PARCEL", "key": vworld_key, "domain": "localhost",
+            "type": "PARCEL", "key": vworld_key, "domain": domain,
         }, timeout=timeout)
         resp.raise_for_status()
         d = resp.json()
@@ -32,7 +32,7 @@ def _vworld_geocode(address_full: str, vworld_key: str, timeout: int) -> tuple[s
 
 
 def address_to_pnu(address: str, api_key: str, timeout: int = 10,
-                   vworld_api_key: str = "") -> dict:
+                   vworld_api_key: str = "", vworld_domain: str = "localhost") -> dict:
     """
     지번주소 문자열 → PNU 및 좌표 반환
 
@@ -113,7 +113,7 @@ def address_to_pnu(address: str, api_key: str, timeout: int = 10,
 
     # juso.go.kr가 좌표를 주지 않으면 VWORLD 지오코딩으로 보완
     if not info["entX"] and vworld_api_key:
-        ex, ey = _vworld_geocode(info["address_full"], vworld_api_key, timeout)
+        ex, ey = _vworld_geocode(info["address_full"], vworld_api_key, timeout, domain=vworld_domain)
         info["entX"] = ex
         info["entY"] = ey
         if ex:

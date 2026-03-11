@@ -55,6 +55,9 @@ class Settings:
     log_file: Path = field(default_factory=lambda: _ROOT / _get("LOG_FILE", "logs/app.log"))
     log_level: str = field(default_factory=lambda: _get("LOG_LEVEL", "INFO"))
 
+    # VWORLD 도메인 (외부 배포 시 변경)
+    vworld_domain: str = field(default_factory=lambda: _get("VWORLD_DOMAIN", "localhost"))
+
     # 스크래핑
     max_pages_per_source: int = field(default_factory=lambda: int(_get("MAX_PAGES_PER_SOURCE", "5")))
     request_timeout: int = field(default_factory=lambda: int(_get("REQUEST_TIMEOUT", "30")))
