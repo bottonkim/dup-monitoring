@@ -71,7 +71,7 @@ def query_planning_zones(x: float, y: float, api_key: str, timeout: int = 15) ->
         try:
             return layer, fallback, _fetch_features(layer, x, y, api_key, timeout)
         except Exception as e:
-            logger.debug(f"레이어 {layer} 조회 건너뜀: {e}")
+            logger.warning(f"레이어 {layer} 조회 건너뜀: {e}")
             return layer, fallback, []
 
     seen = set()
@@ -161,7 +161,7 @@ def fetch_parcel_info(pnu: str, api_key: str, timeout: int = 15) -> dict:
                     logger.debug(f"필지정보 조회 성공 (PNU={try_pnu}, year={year}): 지목={jimok}, 면적={area}")
                     return {"jimok": jimok, "area": area}
             except Exception as e:
-                logger.debug(f"필지정보 조회 실패 (PNU={try_pnu}, year={year}): {e}")
+                logger.warning(f"필지정보 조회 실패 (PNU={try_pnu}, year={year}): {e}")
     return {}
 
 
@@ -229,7 +229,7 @@ def fetch_zone_specific_names(x: float, y: float, api_key: str, timeout: int = 1
                     })
             return items
         except Exception as e:
-            logger.debug(f"구역명 레이어 {layer} 조회 실패: {e}")
+            logger.warning(f"구역명 레이어 {layer} 조회 실패: {e}")
             return []
 
     results = []
@@ -334,7 +334,7 @@ def fetch_wfs_zones(x: float, y: float, api_key: str, timeout: int = 15) -> list
                 })
             return items
         except Exception as e:
-            logger.debug(f"WFS 레이어 {layer} 조회 건너뜀: {e}")
+            logger.warning(f"WFS 레이어 {layer} 조회 건너뜀: {e}")
             return []
 
     results = []
