@@ -174,7 +174,9 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
     try:
         # 1. 지번 → PNU
         cleaned = parse_address_input(address)
-        addr_info = address_to_pnu(cleaned, settings.juso_api_key, settings.request_timeout, vworld_api_key=settings.vworld_api_key)
+        addr_info = address_to_pnu(cleaned, settings.juso_api_key, settings.request_timeout,
+                                   vworld_api_key=settings.vworld_api_key,
+                                   vworld_domain=settings.vworld_domain)
         pnu = addr_info["pnu"]
         result["pnu"] = pnu
         result["address_full"] = addr_info["address_full"]
@@ -199,6 +201,7 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
 
         # 2~3. 좌표/PNU 기반 6개 독립 작업 병렬 실행
         has_coords = settings.vworld_api_key and addr_info.get("entX") and addr_info.get("entY")
+        logger.info(f"좌표: entX={addr_info.get('entX')}, entY={addr_info.get('entY')}, has_coords={bool(has_coords)}")
         x = float(addr_info["entX"]) if has_coords else 0.0
         y = float(addr_info["entY"]) if has_coords else 0.0
         vk = settings.vworld_api_key
@@ -208,7 +211,7 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
             try:
                 return fn(*args, **kwargs)
             except Exception as e:
-                logger.debug(f"{fn.__name__} 실패: {e}")
+                logger.warning(f"{fn.__name__} 실패: {e}")
                 return None
 
         def _task_zones():

@@ -27,7 +27,7 @@ def _vworld_geocode(address_full: str, vworld_key: str, timeout: int, domain: st
             pt = d["response"]["result"]["point"]
             return pt.get("x", ""), pt.get("y", "")
     except Exception as e:
-        logger.debug(f"VWORLD 지오코딩 실패: {e}")
+        logger.warning(f"VWORLD 지오코딩 실패: {e}")
     return "", ""
 
 
@@ -113,11 +113,14 @@ def address_to_pnu(address: str, api_key: str, timeout: int = 10,
 
     # juso.go.kr가 좌표를 주지 않으면 VWORLD 지오코딩으로 보완
     if not info["entX"] and vworld_api_key:
+        logger.info(f"juso.go.kr 좌표 없음 → VWORLD 지오코딩 시도 (domain={vworld_domain})")
         ex, ey = _vworld_geocode(info["address_full"], vworld_api_key, timeout, domain=vworld_domain)
         info["entX"] = ex
         info["entY"] = ey
         if ex:
-            logger.debug(f"VWORLD 지오코딩 좌표: ({ex}, {ey})")
+            logger.info(f"VWORLD 지오코딩 좌표: ({ex}, {ey})")
+        else:
+            logger.warning(f"VWORLD 지오코딩 좌표 획득 실패 → 용도지역/지목/면적 조회 불가")
 
     return info
 
