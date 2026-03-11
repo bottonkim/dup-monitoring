@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<style>
+body{font-family:'Malgun Gothic',sans-serif;color:#333;background:#f5f6f8;margin:0;padding:20px}
+.wrap{max-width:700px;margin:0 auto;background:white;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.1)}
+.hdr{background:#003087;color:white;padding:20px 24px}
+.hdr h1{margin:0;font-size:18px}
+.hdr p{margin:4px 0 0;font-size:13px;opacity:.85}
+.summary{background:#eef2ff;padding:14px 24px;border-left:none;display:flex;gap:24px;flex-wrap:wrap}
+.sum-item{text-align:center}
+.sum-val{font-size:22px;font-weight:700;color:#003087}
+.sum-lbl{font-size:11px;color:#666}
+.body{padding:16px 24px}
+.ann{border:1px solid #e0e4ef;border-radius:6px;padding:14px 16px;margin-bottom:14px}
+.ann-meta{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
+.badge{display:inline-block;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:700;color:white}
+.결정고시,.지정고시{background:#dc3545}
+.변경고시{background:#fd7e14}
+.열람공고,.결정공고{background:#0d6efd}
+.고시공고,.고시,.공고{background:#6f42c1}
+.dtag{font-size:12px;background:#e8f4fd;color:#0069b4;padding:2px 8px;border-radius:3px}
+.date{font-size:12px;color:#999}
+.atitle{font-size:15px;font-weight:600;margin:0 0 10px}
+.atitle a{color:#003087;text-decoration:none}
+.ext{background:#f8f9fc;border-radius:6px;padding:12px 14px;font-size:13px}
+.figs{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.fig{background:white;border:1px solid #e0e4ef;border-radius:6px;padding:6px 12px;text-align:center;min-width:65px}
+.flbl{display:block;font-size:11px;color:#888}
+.fval{display:block;font-size:15px;font-weight:700;color:#003087}
+.summary-text{color:#555;margin-bottom:8px}
+.changes{background:#fff8e1;border-left:3px solid #ffc107;padding:8px 12px;border-radius:0 4px 4px 0;margin-bottom:8px}
+.changes ul{padding-left:18px;margin:4px 0}
+.restbox{background:#fff3cd;border-radius:4px;padding:10px 12px}
+.restbox strong{display:block;margin-bottom:6px;color:#856404}
+.restbox ul{padding-left:18px;margin:0}
+.restbox li{margin-bottom:2px}
+.empty{text-align:center;padding:30px;color:#999;font-size:13px}
+.ftr{text-align:center;font-size:11px;color:#aaa;padding:14px;border-top:1px solid #eee}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hdr">
+    <h1>서울시 도시계획 고시공고 모니터링</h1>
+    <p>{{ report_date }} 기준 일일 요약 보고서</p>
+  </div>
+  <div class="summary">
+    <div class="sum-item"><div class="sum-val">{{ total_new }}</div><div class="sum-lbl">신규 공고</div></div>
+    <div class="sum-item"><div class="sum-val">{{ count_결정고시 }}</div><div class="sum-lbl">결정고시</div></div>
+    <div class="sum-item"><div class="sum-val">{{ count_열람공고 }}</div><div class="sum-lbl">열람공고</div></div>
+    <div class="sum-item"><div class="sum-val">{{ count_analyzed }}</div><div class="sum-lbl">AI 분석 완료</div></div>
+  </div>
+  <div class="body">
+    {% for ann in announcements %}
+    <div class="ann">
+      <div class="ann-meta">
+        {% if ann.category %}<span class="badge {{ ann.category }}">{{ ann.category }}</span>{% endif %}
+        {% if ann.district %}<span class="dtag">{{ ann.district }}</span>{% endif %}
+        {% if ann.published_at %}<span class="date">{{ ann.published_at[:10] }}</span>{% endif %}
+      </div>
+      <p class="atitle">
+        {% if ann.url %}<a href="{{ ann.url }}">{{ ann.title }}</a>{% else %}{{ ann.title }}{% endif %}
+      </p>
+      {% if ann.structured_json and ann.structured_json is mapping %}
+      {% set e = ann.structured_json %}
+      <div class="ext">
+        <div class="figs">
+          {% if e.building_coverage_ratio %}<div class="fig"><span class="flbl">건폐율</span><span class="fval">{{ e.building_coverage_ratio }}</span></div>{% endif %}
+          {% if e.floor_area_ratio %}<div class="fig"><span class="flbl">용적률</span><span class="fval">{{ e.floor_area_ratio }}</span></div>{% endif %}
+          {% if e.max_height_meters %}<div class="fig"><span class="flbl">최고높이</span><span class="fval">{{ e.max_height_meters }}m</span></div>{% endif %}
+          {% if e.max_floors %}<div class="fig"><span class="flbl">최고층수</span><span class="fval">{{ e.max_floors }}층</span></div>{% endif %}
+        </div>
+        {% if e.summary_korean %}<p class="summary-text">{{ e.summary_korean }}</p>{% endif %}
+        {% if e.key_changes %}
+        <div class="changes"><strong>주요 변경사항:</strong><ul>{% for c in e.key_changes %}<li>{{ c }}</li>{% endfor %}</ul></div>
+        {% endif %}
+        {% if e.development_restrictions or e.construction_restrictions %}
+        <div class="restbox">
+          <strong>개발·건축 제한사항</strong>
+          <ul>
+            {% for r in (e.development_restrictions or []) %}<li>{{ r }}</li>{% endfor %}
+            {% for r in (e.construction_restrictions or []) %}<li>{{ r }}</li>{% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+    {% else %}
+    <div class="empty">신규 공고가 없습니다.</div>
+    {% endfor %}
+  </div>
+  <div class="ftr">
+    본 메일은 서울시 도시계획 모니터링 시스템에서 자동 발송됩니다.<br>
+    출처: 서울 열린데이터광장, 서울시보, VWORLD, 토지이음
+  </div>
+</div>
+</body>
+</html>

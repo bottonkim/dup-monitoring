@@ -1,0 +1,333 @@
+"""
+구역명 → 최신 고시공고 조회
+1. 로컬 DB 캐시 우선
+2. DB에 없으면 서울 열린데이터광장 API 직접 조회
+3. 결정고시 CN 내용 Claude 분석 (건축 제한 추출)
+"""
+import logging
+import time
+import hashlib
+import requests
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+_SEOUL_API_BASE = "http://openapi.seoul.go.kr:8088"
+
+_DISTRICTS = [
+    "강남구", "강동구", "강북구", "강서구", "관악구", "광진구", "구로구",
+    "금천구", "노원구", "도봉구", "동대문구", "동작구", "마포구", "서대문구",
+    "서초구", "성동구", "성북구", "송파구", "양천구", "영등포구", "용산구",
+    "은평구", "종로구", "중구", "중랑구",
+]
+
+
+def get_announcements_for_zones(
+    zone_names: list[str],
+    conn,
+    seoul_api_key: str,
+    lookback_days: int = 30,
+    limit: int = 10,
+) -> list[dict]:
+    """
+    구역명 목록으로 관련 고시공고 조회.
+    """
+    from db.database import search_announcements_by_zone
+
+    # 1. 로컬 DB 먼저 조회
+    db_rows = search_announcements_by_zone(conn, zone_names, limit=limit)
+    results = [dict(row) for row in db_rows]
+
+    if results:
+        logger.info(f"로컬 DB에서 {len(results)}건 조회 (구역: {zone_names[:2]})")
+        return results
+
+    # 2. DB에 없으면 서울 열린데이터광장 API 직접 호출
+    if seoul_api_key:
+        api_results = _search_seoul_api(zone_names, seoul_api_key, limit)
+        if api_results:
+            logger.info(f"서울 Open API에서 {len(api_results)}건 조회")
+            return api_results
+
+    return []
+
+
+# ---------------------------------------------------------------------------
+# 서울 Open API 직접 검색
+# ---------------------------------------------------------------------------
+
+def _search_seoul_api(zone_names: list[str], api_key: str, limit: int = 10) -> list[dict]:
+    """서울 열린데이터광장 upisAnnouncement API에서 구역명 검색"""
+    all_results = []
+    seen_ids = set()
+
+    # upisAnnouncement 최근 3000건 스캔 (30페이지)
+    max_pages = 30
+    for page in range(max_pages):
+        start = page * 100 + 1
+        end = start + 99
+        url = f"{_SEOUL_API_BASE}/{api_key}/json/upisAnnouncement/{start}/{end}"
+        try:
+            resp = requests.get(url, timeout=15)
+            resp.raise_for_status()
+            data = resp.json()
+            items = data.get("upisAnnouncement", {}).get("row", []) or []
+            if not items:
+                break
+
+            for item in items:
+                title = (item.get("TTL") or "").strip()
+                cn = (item.get("CN") or "").strip()
+                if not title:
+                    continue
+
+                # 구역명 매칭 (제목 + 내용)
+                if not _is_zone_match(title, cn, zone_names):
+                    continue
+
+                ann_id = item.get("ANCMNT_MNG_CD") or title[:20]
+                if ann_id in seen_ids:
+                    continue
+                seen_ids.add(ann_id)
+
+                pub_date = item.get("ANCMNT_YMD") or ""
+                all_results.append({
+                    "source": "seoul_api_direct",
+                    "source_id": str(ann_id),
+                    "title": title,
+                    "category": _detect_category(title),
+                    "district": _extract_district(title + " " + cn),
+                    "zone_name": _extract_zone_name(title + " " + cn, zone_names),
+                    "published_at": _normalize_date(pub_date),
+                    "url": "",
+                    "structured_json": None,
+                    "cn_content": cn,
+                    "gazette_no": item.get("ANCMNT_NO") or "",
+                })
+
+            if len(all_results) >= limit:
+                break
+            time.sleep(0.2)
+
+        except Exception as e:
+            logger.warning(f"upisAnnouncement 페이지{page+1} 조회 실패: {e}")
+            break
+
+    return all_results[:limit]
+
+
+def _is_zone_match(title: str, cn: str, zone_names: list[str]) -> bool:
+    """제목/내용에 구역명(또는 핵심 키워드)이 포함되는지 확인"""
+    text = title + " " + cn
+    for zone in zone_names:
+        if not zone or len(zone) < 2:
+            continue
+        if zone in text:
+            return True
+        # 부분 매칭: "왕십리 광역중심 지구단위계획구역" → "왕십리" 포함 여부
+        for part in zone.split():
+            if len(part) >= 2 and part not in ("지구단위계획구역", "지구단위계획", "구역", "정비구역") and part in text:
+                return True
+    return False
+
+
+# ---------------------------------------------------------------------------
+# 고시공고 일괄 임포트 (upisAnnouncement 전체)
+# ---------------------------------------------------------------------------
+
+def import_all_upis_announcements(api_key: str, db_path: Path, max_pages: int = 450):
+    """
+    upisAnnouncement 전체 항목을 DB에 일괄 임포트.
+    첫 실행 시 ~2분 소요 (43k 건), 이후에는 신규분만 추가.
+    """
+    from db.database import get_connection, upsert_announcement
+
+    conn = get_connection(db_path)
+
+    # 이미 충분한 데이터가 있으면 스킵
+    count = conn.execute("SELECT COUNT(*) FROM announcements WHERE source='upis_api'").fetchone()[0]
+    if count > 30000:
+        logger.info(f"upisAnnouncement 이미 {count}건 임포트됨 — 스킵")
+        conn.close()
+        return count
+
+    logger.info(f"upisAnnouncement 일괄 임포트 시작 (기존 {count}건)")
+    imported = 0
+    new_count = 0
+
+    for page in range(max_pages):
+        start = page * 100 + 1
+        end = start + 99
+        url = f"{_SEOUL_API_BASE}/{api_key}/json/upisAnnouncement/{start}/{end}"
+
+        try:
+            resp = requests.get(url, timeout=20)
+            resp.raise_for_status()
+            data = resp.json()
+            svc = data.get("upisAnnouncement", {})
+
+            err_code = svc.get("RESULT", {}).get("CODE", "")
+            if err_code not in ("INFO-000", ""):
+                logger.warning(f"upisAnnouncement API 오류: {svc.get('RESULT')}")
+                break
+
+            items = svc.get("row", [])
+            if not items:
+                break
+
+            total = int(svc.get("list_total_count", 0))
+
+            for item in items:
+                title = (item.get("TTL") or "").strip()
+                if not title:
+                    continue
+
+                cn = (item.get("CN") or "").strip()
+                ann_code = item.get("ANCMNT_MNG_CD") or ""
+                pub_date = item.get("ANCMNT_YMD") or ""
+                gazette_no = item.get("ANCMNT_NO") or ""
+
+                c_hash = hashlib.sha256((title + cn).encode()).hexdigest()[:32]
+                ann_id, is_new = upsert_announcement(conn, {
+                    "source": "upis_api",
+                    "source_id": f"upis_{ann_code}" if ann_code else f"upis_{c_hash}",
+                    "title": title,
+                    "category": _detect_category(title),
+                    "district": _extract_district(title + " " + cn),
+                    "zone_name": "",
+                    "published_at": _normalize_date(pub_date),
+                    "url": "",
+                    "content_hash": c_hash,
+                    "raw_content": cn[:3000],
+                })
+                imported += 1
+                if is_new:
+                    new_count += 1
+
+            if page % 50 == 0 and page > 0:
+                logger.info(f"  ... {imported}건 처리 / {new_count}건 신규 (페이지 {page+1}/{max_pages})")
+
+            if end >= total:
+                break
+
+            time.sleep(0.1)
+
+        except Exception as e:
+            logger.warning(f"upisAnnouncement 임포트 페이지{page+1} 실패: {e}")
+            time.sleep(1)
+
+    conn.close()
+    logger.info(f"upisAnnouncement 임포트 완료: 총 {imported}건 처리, {new_count}건 신규")
+    return imported
+
+
+# ---------------------------------------------------------------------------
+# Claude 분석: 결정고시 CN 내용 → 건축 제한 구조화
+# ---------------------------------------------------------------------------
+
+def analyze_announcement_with_claude(
+    title: str,
+    cn_content: str,
+    api_key: str,
+    model: str = "claude-sonnet-4-6",
+) -> dict:
+    """
+    결정고시/열람공고 CN 내용을 Claude로 분석하여 건축 제한 정보 추출.
+    CN이 짧아 건폐율/용적률 등 구체적 수치는 없을 수 있음 — 있는 정보만 추출.
+    """
+    try:
+        import anthropic
+    except ImportError:
+        return {"error": "anthropic 미설치"}
+
+    system = """당신은 서울시 도시계획 공문서 분석가입니다.
+결정고시/열람공고/지정고시 등의 내용에서 핵심 정보를 JSON으로 추출합니다.
+반드시 순수 JSON만 응답하세요 (마크다운 코드블록 없이)."""
+
+    prompt = f"""다음 서울시 도시계획 고시/공고의 제목과 내용에서 정보를 추출하세요.
+
+제목: {title}
+
+내용:
+{cn_content}
+
+아래 JSON 스키마로 추출하세요. 내용에 없는 항목은 null로 하세요:
+{{
+  "zone_name": "구역명",
+  "zone_type": "지구단위계획구역 | 정비구역 | 특별계획구역 | 기타",
+  "action_type": "결정 | 변경 | 지정 | 해제 | 열람 | 기타",
+  "district": "자치구",
+  "gazette_number": "고시번호",
+  "announcement_date": "고시일 (YYYY-MM-DD)",
+  "building_coverage_ratio": "건폐율",
+  "floor_area_ratio": "용적률",
+  "max_height_meters": null,
+  "max_floors": null,
+  "allowed_uses": [],
+  "prohibited_uses": [],
+  "key_changes": ["주요 변경사항"],
+  "summary_korean": "100자 이내 핵심 요약",
+  "confidence": "high | medium | low"
+}}"""
+
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+        message = client.messages.create(
+            model=model,
+            max_tokens=2048,
+            temperature=0,
+            system=system,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = message.content[0].text.strip()
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        import json
+        result = json.loads(raw)
+        logger.info(f"Claude 고시 분석 완료: {result.get('zone_name')}")
+        return result
+    except Exception as e:
+        logger.warning(f"Claude 고시 분석 실패: {e}")
+        return {"error": str(e), "confidence": "low"}
+
+
+# ---------------------------------------------------------------------------
+# 유틸리티
+# ---------------------------------------------------------------------------
+
+def _normalize_date(raw: str) -> str:
+    if not raw:
+        return ""
+    raw = raw.strip()
+    if "T" in raw:
+        return raw[:10]
+    if len(raw) >= 8 and raw[4:5].isdigit():
+        return f"{raw[:4]}-{raw[4:6]}-{raw[6:8]}"
+    return raw[:10]
+
+
+def _detect_category(title: str) -> str:
+    for cat in ["결정고시", "지정고시", "변경고시", "해제고시", "열람공고", "결정공고"]:
+        if cat in title:
+            return cat
+    if "고시" in title:
+        return "고시"
+    if "공고" in title:
+        return "공고"
+    return ""
+
+
+def _extract_district(text: str) -> str:
+    for d in _DISTRICTS:
+        if d in text:
+            return d
+    return ""
+
+
+def _extract_zone_name(text: str, zone_names: list[str]) -> str:
+    for zone in zone_names:
+        if zone and zone in text:
+            return zone
+    return ""

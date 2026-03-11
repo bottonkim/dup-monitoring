@@ -1,0 +1,23 @@
+.env
+__pycache__/
+*.pyc
+data/
+logs/
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+.claude/
+*.log
+
+# 테스트/임시 파일
+test_*.py
+test_*.json
+*.txt
+api_response*.json
+coex_eum.json
+eum_*.json
+upisuq*.json
+vworld_*.json
+wfs_*.json

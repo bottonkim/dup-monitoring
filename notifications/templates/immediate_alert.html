@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<style>
+body{font-family:'Malgun Gothic',sans-serif;color:#333;background:#f5f6f8;margin:0;padding:20px}
+.wrap{max-width:700px;margin:0 auto;background:white;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.1)}
+.alert-banner{background:#dc3545;color:white;padding:12px 24px;text-align:center;font-weight:700;font-size:15px}
+.hdr{background:#003087;color:white;padding:18px 24px}
+.hdr h1{margin:0;font-size:17px}
+.body{padding:20px 24px}
+.meta{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.badge{display:inline-block;padding:3px 10px;border-radius:3px;font-size:12px;font-weight:700;background:#dc3545;color:white}
+.dtag{font-size:12px;background:#e8f4fd;color:#0069b4;padding:3px 10px;border-radius:3px}
+.date{font-size:12px;color:#999}
+.atitle{font-size:16px;font-weight:700;margin:0 0 14px}
+.atitle a{color:#003087;text-decoration:none}
+.ext{background:#f8f9fc;border-radius:6px;padding:14px 16px}
+.figs{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.fig{background:white;border:1px solid #e0e4ef;border-radius:6px;padding:8px 14px;text-align:center;min-width:70px}
+.flbl{display:block;font-size:11px;color:#888}
+.fval{display:block;font-size:16px;font-weight:700;color:#003087}
+.summary{color:#555;margin-bottom:12px;line-height:1.6}
+.section{margin-bottom:12px}
+.section-title{font-size:13px;font-weight:700;color:#444;margin-bottom:6px}
+.restbox{background:#fff3cd;border-radius:4px;padding:10px 14px}
+.restbox ul{padding-left:18px;margin:0}
+.restbox li{margin-bottom:3px;font-size:13px}
+.link-btn{display:inline-block;padding:10px 20px;background:#003087;color:white;border-radius:6px;font-weight:600;text-decoration:none;margin-top:14px}
+.ftr{text-align:center;font-size:11px;color:#aaa;padding:14px;border-top:1px solid #eee}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="alert-banner">⚠ 서울시 도시계획 긴급 알림</div>
+  <div class="hdr">
+    <h1>{{ ann.category or '결정고시' }} 발생</h1>
+  </div>
+  <div class="body">
+    <div class="meta">
+      {% if ann.category %}<span class="badge">{{ ann.category }}</span>{% endif %}
+      {% if ann.district %}<span class="dtag">{{ ann.district }}</span>{% endif %}
+      {% if ann.published_at %}<span class="date">{{ ann.published_at[:10] }}</span>{% endif %}
+    </div>
+    <p class="atitle">
+      {% if ann.url %}<a href="{{ ann.url }}">{{ ann.title }}</a>{% else %}{{ ann.title }}{% endif %}
+    </p>
+
+    {% if ann.structured_json and ann.structured_json is mapping %}
+    {% set e = ann.structured_json %}
+    <div class="ext">
+      {% if e.zone_name %}<p><strong>구역:</strong> {{ e.zone_name }}</p>{% endif %}
+      {% if e.gazette_number %}<p><strong>고시번호:</strong> {{ e.gazette_number }}</p>{% endif %}
+
+      <div class="figs">
+        {% if e.building_coverage_ratio %}<div class="fig"><span class="flbl">건폐율</span><span class="fval">{{ e.building_coverage_ratio }}</span></div>{% endif %}
+        {% if e.floor_area_ratio %}<div class="fig"><span class="flbl">용적률</span><span class="fval">{{ e.floor_area_ratio }}</span></div>{% endif %}
+        {% if e.max_height_meters %}<div class="fig"><span class="flbl">최고높이</span><span class="fval">{{ e.max_height_meters }}m</span></div>{% endif %}
+        {% if e.max_floors %}<div class="fig"><span class="flbl">최고층수</span><span class="fval">{{ e.max_floors }}층</span></div>{% endif %}
+      </div>
+
+      {% if e.summary_korean %}<p class="summary">{{ e.summary_korean }}</p>{% endif %}
+
+      {% if e.key_changes %}
+      <div class="section">
+        <div class="section-title">주요 변경사항</div>
+        <ul style="padding-left:18px;margin:0">{% for c in e.key_changes %}<li>{{ c }}</li>{% endfor %}</ul>
+      </div>
+      {% endif %}
+
+      {% if e.development_restrictions or e.construction_restrictions %}
+      <div class="restbox">
+        <div class="section-title" style="color:#856404">개발·건축 제한사항</div>
+        <ul>
+          {% for r in (e.development_restrictions or []) %}<li>{{ r }}</li>{% endfor %}
+          {% for r in (e.construction_restrictions or []) %}<li>{{ r }}</li>{% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if ann.url %}
+    <a href="{{ ann.url }}" class="link-btn">원문 확인하기 →</a>
+    {% endif %}
+  </div>
+  <div class="ftr">
+    본 메일은 서울시 도시계획 모니터링 시스템에서 자동 발송됩니다.
+  </div>
+</div>
+</body>
+</html>

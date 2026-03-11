@@ -1,0 +1,18 @@
+[Unit]
+Description=DUP Monitoring Service
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/dup-monitor
+EnvironmentFile=/opt/dup-monitor/.env
+Environment=PATH=/opt/dup-monitor/venv/bin:/usr/bin
+ExecStart=/opt/dup-monitor/venv/bin/python main.py --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

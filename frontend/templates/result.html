@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>조회 결과 - {{ address }}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="container">
+    <header class="site-header">
+      <h1><a href="/" class="home-link">서울시 도시계획 구역 조회</a></h1>
+    </header>
+
+    <main>
+      <!-- 검색 폼 (재검색용) -->
+      <form method="POST" action="/lookup" class="search-form compact" id="searchForm">
+        <div class="search-box autocomplete-wrap">
+          <input type="text" name="address" id="address" value="{{ address }}" autocomplete="off" required>
+          <button type="submit" class="btn-search">재조회</button>
+          <ul class="autocomplete-list" id="autocompleteList" hidden></ul>
+        </div>
+      </form>
+      <!-- 로딩 오버레이 (재검색용) -->
+      <div id="loadingOverlay" class="loading-overlay">
+        <div class="loading-content">
+          <div class="loading-title">조회 중...</div>
+          <div class="progress-bar-track">
+            <div class="progress-bar-fill" id="progressBar"></div>
+          </div>
+          <div class="loading-status" id="loadingStatus">주소 변환 중...</div>
+        </div>
+      </div>
+
+      <script>
+      (function() {
+        const input = document.getElementById('address');
+        const list  = document.getElementById('autocompleteList');
+        let timer, activeIdx = -1;
+        function closeList() { list.hidden = true; list.innerHTML = ''; activeIdx = -1; }
+        function highlight(idx) {
+          list.querySelectorAll('li').forEach((li,i) => li.classList.toggle('active', i===idx));
+          activeIdx = idx;
+        }
+        async function fetchSuggestions(q) {
+          try { const r = await fetch('/suggest?q='+encodeURIComponent(q)); return r.ok ? r.json() : []; }
+          catch { return []; }
+        }
+        function renderList(sugs) {
+          list.innerHTML = '';
+          if (!sugs.length) { list.hidden = true; return; }
+          sugs.forEach((s,i) => {
+            const li = document.createElement('li');
+            const m = document.createElement('span'); m.className='ac-main'; m.textContent=s.label; li.appendChild(m);
+            if (s.road) { const b=document.createElement('span'); b.className='ac-sub'; b.textContent=s.road; li.appendChild(b); }
+            li.addEventListener('mousedown', e => { e.preventDefault(); input.value=s.value; closeList(); document.getElementById('searchForm').submit(); });
+            li.addEventListener('mouseover', () => highlight(i));
+            list.appendChild(li);
+          });
+          list.hidden = false; activeIdx = -1;
+        }
+        input.addEventListener('input', () => {
+          clearTimeout(timer);
+          const q = input.value.trim();
+          if (q.length < 2) { closeList(); return; }
+          timer = setTimeout(async () => renderList(await fetchSuggestions(q)), 250);
+        });
+        input.addEventListener('keydown', e => {
+          const items = list.querySelectorAll('li');
+          if (e.key==='ArrowDown') { e.preventDefault(); highlight(Math.min(activeIdx+1,items.length-1)); }
+          else if (e.key==='ArrowUp') { e.preventDefault(); highlight(Math.max(activeIdx-1,0)); }
+          else if (e.key==='Enter' && activeIdx>=0 && !list.hidden) {
+            e.preventDefault(); input.value=items[activeIdx].querySelector('.ac-main').textContent;
+            closeList(); document.getElementById('searchForm').submit();
+          } else if (e.key==='Escape') closeList();
+        });
+        document.addEventListener('click', e => { if (!e.target.closest('.autocomplete-wrap')) closeList(); });
+
+        // 로딩 프로그레스바
+        var form = document.getElementById('searchForm');
+        var overlay = document.getElementById('loadingOverlay');
+        var bar = document.getElementById('progressBar');
+        var status = document.getElementById('loadingStatus');
+        var stages = [
+          {pct: 15, text: '주소 변환 중...', delay: 800},
+          {pct: 35, text: '도시계획 구역 조회 중...', delay: 2000},
+          {pct: 55, text: '필지 정보 수집 중...', delay: 3500},
+          {pct: 70, text: '토지이음 조회 중...', delay: 5000},
+          {pct: 85, text: '고시공고 검색 중...', delay: 7000},
+          {pct: 93, text: '결과 정리 중...', delay: 10000}
+        ];
+        form.addEventListener('submit', function() {
+          var addr = input.value.trim();
+          if (!addr) return;
+          overlay.classList.add('active');
+          bar.style.width = '0%';
+          stages.forEach(function(s) {
+            setTimeout(function() { bar.style.width = s.pct + '%'; status.textContent = s.text; }, s.delay);
+          });
+        });
+      })();
+      </script>
+
+      <!-- 오류 -->
+      {% if error %}
+      <div class="alert alert-error">
+        <strong>조회 실패:</strong> {{ error }}
+        <br><small>주소 형식을 확인하거나 다시 시도해주세요. (예: 강남구 삼성동 100-1)</small>
+      </div>
+      {% else %}
+
+      <!-- ① 토지 개요 -->
+      <section class="result-section overview-section">
+        <h3 class="section-title">토지 개요</h3>
+
+        <!-- 주소 -->
+        <div class="overview-address">
+          <span class="ov-label">소재지</span>
+          <span class="ov-value addr-main">{{ address_full or address }}</span>
+          {% if address_road %}
+          <span class="ov-value addr-sub">{{ address_road }}</span>
+          {% endif %}
+        </div>
+
+        <!-- 지목 / 면적 / 용도지역 -->
+        {% set pi = parcel_info or {} %}
+        {% set li = (tojieum_info or {}).get('land_info', {}) %}
+        <div class="overview-grid">
+          <div class="ov-cell">
+            <span class="ov-label">지목</span>
+            <span class="ov-value">{{ pi.get('jimok') or li.get('지목') or '—' }}</span>
+          </div>
+          <div class="ov-cell">
+            <span class="ov-label">면적</span>
+            <span class="ov-value">{{ pi.get('area') or li.get('면적') or '—' }}</span>
+          </div>
+          <div class="ov-cell">
+            <span class="ov-label">용도지역</span>
+            <span class="ov-value">{{ yongdo_zone or '—' }}</span>
+          </div>
+        </div>
+
+        <!-- 지역지구등 지정여부 -->
+        {% if zones %}
+        <div class="ov-block">
+          <div class="ov-block-title">지역지구등 지정여부</div>
+          <table class="zone-table">
+            <tbody>
+            {# 국토계획법 구역 #}
+            {% set ns = namespace(natl_printed=false, other_printed=false) %}
+            {% for zone in zones %}
+              {% if zone.law_category == '국토계획법' %}
+                {% if not ns.natl_printed %}
+                  {% set ns.natl_printed = true %}
+                  <tr class="zone-law-header"><td colspan="4">「국토의 계획 및 이용에 관한 법률」에 따른 지역·지구 등</td></tr>
+                  <tr class="zone-col-header"><th>구분</th><th>지정 내용</th><th>지정연도</th><th>고시번호</th></tr>
+                {% endif %}
+                <tr>
+                  <td>{% if zone.layer == 'lt_c_uq111' %}용도지역{% elif zone.layer == 'lt_c_uq121' %}용도지구{% elif zone.layer == 'lt_c_upisuq151' %}도시계획도로{% else %}도시계획구역{% endif %}</td>
+                  <td>
+                    <strong>{{ zone.upis_name or zone.zone_name }}</strong>
+                    {% if zone.upis_name and zone.upis_name != zone.zone_name %}<br><small class="zone-loc">{{ zone.zone_name }}</small>{% endif %}
+                  </td>
+                  <td>{% if zone.designated_year and zone.designated_year != '0000' %}{{ zone.designated_year }}년{% else %}—{% endif %}</td>
+                  <td>{% if zone.gazette_number and zone.gazette_number != '0000' %}{{ zone.gazette_number }}{% else %}—{% endif %}</td>
+                </tr>
+              {% endif %}
+            {% endfor %}
+            {# 다른 법령 구역 #}
+            {% for zone in zones %}
+              {% if zone.law_category == '다른 법령' or zone.source == 'urban_seoul' %}
+                {% if not ns.other_printed %}
+                  {% set ns.other_printed = true %}
+                  <tr class="zone-law-header"><td colspan="4">「다른 법령 등」에 따른 지역·지구 등</td></tr>
+                  <tr class="zone-col-header"><th>구분</th><th>지정 내용</th><th>지정연도</th><th>고시번호</th></tr>
+                {% endif %}
+                <tr class="zone-row-special">
+                  <td>{% if zone.source == 'urban_seoul' %}{{ zone.zone_type }}
+                      {% elif zone.layer == 'lt_c_uq162' %}공원/공공공지
+                      {% elif zone.layer == 'lt_c_up201' %}재해위험지구
+                      {% elif zone.layer == 'lt_c_ub011' %}정비구역
+                      {% elif zone.layer == 'lt_c_ud502' %}특별계획구역
+                      {% elif zone.layer == 'lt_c_ud801' %}개발제한구역
+                      {% elif zone.layer == 'lt_c_uo101' %}교육환경보호구역
+                      {% elif zone.layer == 'lt_c_uo301' %}국가유산보호구역
+                      {% elif zone.layer == 'lt_c_uf151' %}산림보호구역
+                      {% else %}도시계획구역{% endif %}</td>
+                  <td>
+                    <strong>{{ zone.zone_name }}</strong>
+                    {% if zone.location %}<br><small class="zone-loc">{{ zone.location }}</small>{% endif %}
+                  </td>
+                  <td>{% if zone.designated_year and zone.designated_year != '0000' %}{{ zone.designated_year }}년{% else %}—{% endif %}</td>
+                  <td>{% if zone.gazette_number and zone.gazette_number != '0000' %}{{ zone.gazette_number }}
+                      {% elif zone.gazette %}{{ zone.gazette }}
+                      {% else %}—{% endif %}</td>
+                </tr>
+              {% endif %}
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endif %}
+
+        <!-- 토지이용 규제사항 -->
+        {% set restrictions = (tojieum_info or {}).get('restrictions', []) %}
+        {% if restrictions %}
+        <div class="ov-block">
+          <div class="ov-block-title">토지이용 규제사항 <span class="ov-src">(토지이음)</span></div>
+          <ul class="ov-restrict-list">
+            {% for r in restrictions %}
+            <li>{{ r }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+
+        {% if pnu and pnu|length == 19 %}
+        {# 토이이음 PNU: juso mtYn '0'→'1'(일반), '1'→'2'(산) + mode=search 포함 #}
+        {% set _mt    = pnu[10] %}
+        {% set _tjpnu = pnu[:10] ~ ('1' if _mt == '0' else '2') ~ pnu[11:] %}
+        {% set _lgbn  = '1' if _mt == '0' else '2' %}
+        {% set _bobn  = (pnu[11:15] | int) | string %}
+        {% set _bubn  = (pnu[15:19] | int) | string %}
+        <form id="tojieum-form" method="POST" action="https://www.eum.go.kr/web/ar/lu/luLandDet.jsp" target="_blank" style="display:none">
+          <input type="hidden" name="pnu"        value="{{ _tjpnu }}">
+          <input type="hidden" name="add"        value="land">
+          <input type="hidden" name="landGbn"    value="{{ _lgbn }}">
+          <input type="hidden" name="mode"       value="search">
+          <input type="hidden" name="detType"    value="luLand">
+          <input type="hidden" name="selGbn"     value="umd">
+          <input type="hidden" name="s_type"     value="1">
+          <input type="hidden" name="isNoScr"    value="script">
+          <input type="hidden" name="selSido"    value="{{ pnu[0:2] }}">
+          <input type="hidden" name="selSgg"     value="{{ pnu[2:5] }}">
+          <input type="hidden" name="selUmd"     value="{{ pnu[5:8].zfill(4) }}">
+          <input type="hidden" name="selRi"      value="{{ pnu[8:10] }}">
+          <input type="hidden" name="bobn"       value="{{ _bobn }}">
+          <input type="hidden" name="bubn"       value="{{ _bubn }}">
+          <input type="hidden" name="ucodes"     value="">
+          <input type="hidden" name="markUcodes" value="">
+          <input type="hidden" name="viewType"   value="">
+          <input type="hidden" name="sggcd"      value="">
+        </form>
+        <button type="button" onclick="document.getElementById('tojieum-form').submit()" class="btn-external">토지이음에서 상세 확인 →</button>
+        {% endif %}
+      </section>
+
+      <!-- ② 구역 현황 (지단/정비/특계 + 용도지역 건축기준) -->
+      <section class="result-section">
+        <h3 class="section-title">구역 현황 및 건축 기준</h3>
+
+        {% if zones %}
+        <div class="zones-list">
+          {% for zone in zones %}
+          <div class="zone-card {% if zone.layer != 'lt_c_uq111' %}zone-card-special{% endif %}">
+            <div class="zone-header">
+              <span class="zone-type-badge {% if zone.layer != 'lt_c_uq111' %}badge-special{% endif %}">
+                {%- if zone.source == 'urban_seoul' and zone.zone_name -%}{{ zone.zone_name }}{%- else -%}{{ zone.zone_type }}{%- endif -%}
+              </span>
+              <div class="zone-meta">
+                {% if zone.designated_year and zone.designated_year != '0000' %}<span>지정: {{ zone.designated_year }}년</span>{% endif %}
+                {% if zone.gazette_number and zone.gazette_number != '0000' %}<span>고시번호: {{ zone.gazette_number }}</span>{% endif %}
+                {% if zone.gazette %}<span>{{ zone.gazette }}</span>{% endif %}
+                {% if zone.sigg_name %}<span>{{ zone.sigg_name }}</span>{% endif %}
+              </div>
+            </div>
+            {% if zone.layer == 'lt_c_uq111' %}
+            {% if zone.zone_type == '제1종전용주거지역' %}
+            <div class="zone-limits"><span>건폐율 50% 이하</span><span>용적률 100% 이하</span><span>2층 이하</span></div>
+            {% elif zone.zone_type == '제2종전용주거지역' %}
+            <div class="zone-limits"><span>건폐율 40% 이하</span><span>용적률 120% 이하</span><span>4층 이하</span></div>
+            {% elif zone.zone_type == '제1종일반주거지역' %}
+            <div class="zone-limits"><span>건폐율 60% 이하</span><span>용적률 200% 이하</span><span>4층 이하</span></div>
+            {% elif zone.zone_type == '제2종일반주거지역' %}
+            <div class="zone-limits"><span>건폐율 60% 이하</span><span>용적률 250% 이하</span><span>12층 이하</span></div>
+            {% elif zone.zone_type == '제3종일반주거지역' %}
+            <div class="zone-limits"><span>건폐율 50% 이하</span><span>용적률 300% 이하</span></div>
+            {% elif zone.zone_type == '준주거지역' %}
+            <div class="zone-limits"><span>건폐율 60% 이하</span><span>용적률 400% 이하</span></div>
+            {% elif zone.zone_type == '중심상업지역' %}
+            <div class="zone-limits"><span>건폐율 60% 이하</span><span>용적률 1200% 이하</span></div>
+            {% elif zone.zone_type == '일반상업지역' %}
+            <div class="zone-limits"><span>건폐율 60% 이하</span><span>용적률 800% 이하</span></div>
+            {% elif zone.zone_type == '근린상업지역' %}
+            <div class="zone-limits"><span>건폐율 60% 이하</span><span>용적률 600% 이하</span></div>
+            {% elif zone.zone_type == '유통상업지역' %}
+            <div class="zone-limits"><span>건폐율 60% 이하</span><span>용적률 600% 이하</span></div>
+            {% elif zone.zone_type == '자연녹지지역' %}
+            <div class="zone-limits"><span>건폐율 20% 이하</span><span>용적률 100% 이하</span></div>
+            {% elif zone.zone_type == '생산녹지지역' %}
+            <div class="zone-limits"><span>건폐율 20% 이하</span><span>용적률 100% 이하</span></div>
+            {% elif zone.zone_type == '보전녹지지역' %}
+            <div class="zone-limits"><span>건폐율 20% 이하</span><span>용적률 80% 이하</span></div>
+            {% elif zone.zone_type == '준공업지역' %}
+            <div class="zone-limits"><span>건폐율 60% 이하</span><span>용적률 400% 이하</span></div>
+            {% endif %}
+            {% elif zone.layer == 'lt_c_uq141' %}
+            {% if zone.upis_name %}
+            <p class="zone-detail"><strong>{{ zone.upis_name }}</strong></p>
+            {% else %}
+            <p class="zone-note">구체적 계획명은 <a href="{{ tojieum_url }}" target="_blank">토지이음</a> 확인</p>
+            {% endif %}
+            {% elif zone.source == 'urban_seoul' %}
+            {% if zone.location %}
+            <p class="zone-detail zone-location">{{ zone.location }}</p>
+            {% endif %}
+            {% if zone.gazette %}
+            <p class="zone-note">고시: {{ zone.gazette }}</p>
+            {% endif %}
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state"><p>VWORLD API 키가 없거나 지정된 구역이 없습니다.</p></div>
+        {% endif %}
+      </section>
+
+      <!-- ③ 최신 고시공고 + AI 분석 -->
+      <section class="result-section">
+        <h3 class="section-title">최신 고시공고</h3>
+        {% if announcements %}
+
+        {# AI 분석 결과가 있는 고시가 있으면 건축 제한 요약 표시 #}
+        {% set ns_ai = namespace(found=false) %}
+        {% for ann in announcements %}
+          {% if ann.structured_json and ann.structured_json is mapping and not ns_ai.found %}
+            {% set ns_ai.found = true %}
+            {% set ext = ann.structured_json %}
+            <div class="ai-restriction-summary" id="aiResult">
+              <div class="ai-header">
+                <span class="ai-badge">AI 분석</span>
+                <span class="ai-source">{{ ann.title[:60] }}{% if ann.title|length > 60 %}...{% endif %}</span>
+              </div>
+
+              {% if ext.summary_korean %}
+              <p class="ai-summary-text">{{ ext.summary_korean }}</p>
+              {% endif %}
+
+              {# 건축 제한 수치 그리드 #}
+              {% if ext.building_coverage_ratio or ext.floor_area_ratio or ext.max_height_meters or ext.max_floors %}
+              <div class="restriction-grid">
+                {% if ext.building_coverage_ratio %}<div class="r-cell"><span class="r-label">건폐율</span><span class="r-value">{{ ext.building_coverage_ratio }}</span></div>{% endif %}
+                {% if ext.floor_area_ratio %}<div class="r-cell"><span class="r-label">용적률</span><span class="r-value">{{ ext.floor_area_ratio }}</span></div>{% endif %}
+                {% if ext.max_height_meters %}<div class="r-cell"><span class="r-label">최고높이</span><span class="r-value">{{ ext.max_height_meters }}m</span></div>{% endif %}
+                {% if ext.max_floors %}<div class="r-cell"><span class="r-label">최고층수</span><span class="r-value">{{ ext.max_floors }}층</span></div>{% endif %}
+              </div>
+              {% endif %}
+
+              {# 허용/불허 용도 #}
+              {% if ext.allowed_uses or ext.prohibited_uses %}
+              <div class="use-restrictions">
+                {% if ext.allowed_uses %}
+                <div class="use-box use-allowed">
+                  <strong>허용 용도:</strong> {{ ext.allowed_uses | join(', ') }}
+                </div>
+                {% endif %}
+                {% if ext.prohibited_uses %}
+                <div class="use-box use-prohibited">
+                  <strong>불허 용도:</strong> {{ ext.prohibited_uses | join(', ') }}
+                </div>
+                {% endif %}
+              </div>
+              {% endif %}
+
+              {# 주요 변경사항 #}
+              {% if ext.key_changes %}
+              <div class="changes-box">
+                <strong>주요 변경:</strong>
+                <ul>{% for c in ext.key_changes %}<li>{{ c }}</li>{% endfor %}</ul>
+              </div>
+              {% endif %}
+
+              {% if ext.gazette_number %}
+              <div class="ai-meta">고시번호: {{ ext.gazette_number }}{% if ext.announcement_date %} ({{ ext.announcement_date }}){% endif %}</div>
+              {% endif %}
+            </div>
+          {% endif %}
+        {% endfor %}
+
+        {# AI 분석 대기 중 — 비동기 AJAX로 로딩 #}
+        {% if _ai_pending and not ns_ai.found %}
+        <div class="ai-restriction-summary ai-loading" id="aiResult">
+          <div class="ai-header">
+            <span class="ai-badge">AI 분석</span>
+            <span class="ai-source">건축 제한사항 분석 중...</span>
+          </div>
+          <div class="ai-spinner-wrap">
+            <div class="ai-spinner"></div>
+            <span>시보 PDF를 분석하고 있습니다. 잠시만 기다려주세요...</span>
+          </div>
+        </div>
+        <script>
+        (function() {
+          var pending = {{ _ai_pending | tojson }};
+          var params = new URLSearchParams({
+            zone_name: pending.zone_name,
+            gazette_ref: pending.gazette_ref,
+            ann_title: pending.ann_title,
+            ann_cn: pending.ann_cn
+          });
+          fetch('/api/analyze-gazette?' + params.toString())
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+              var el = document.getElementById('aiResult');
+              if (!el) return;
+              if (data.error) {
+                el.innerHTML = '<div class="ai-header"><span class="ai-badge ai-badge-fail">AI 분석</span><span class="ai-source">분석을 완료할 수 없습니다</span></div>';
+                return;
+              }
+              var html = '<div class="ai-header"><span class="ai-badge">AI 분석</span><span class="ai-source">' + (data.zone_name || pending.ann_title).substring(0, 60) + '</span></div>';
+              if (data.summary_korean) html += '<p class="ai-summary-text">' + data.summary_korean + '</p>';
+              var hasNums = data.building_coverage_ratio || data.floor_area_ratio || data.max_height_meters || data.max_floors;
+              if (hasNums) {
+                html += '<div class="restriction-grid">';
+                if (data.building_coverage_ratio) html += '<div class="r-cell"><span class="r-label">건폐율</span><span class="r-value">' + data.building_coverage_ratio + '</span></div>';
+                if (data.floor_area_ratio) html += '<div class="r-cell"><span class="r-label">용적률</span><span class="r-value">' + data.floor_area_ratio + '</span></div>';
+                if (data.max_height_meters) html += '<div class="r-cell"><span class="r-label">최고높이</span><span class="r-value">' + data.max_height_meters + 'm</span></div>';
+                if (data.max_floors) html += '<div class="r-cell"><span class="r-label">최고층수</span><span class="r-value">' + data.max_floors + '층</span></div>';
+                html += '</div>';
+              }
+              if (data.allowed_uses && data.allowed_uses.length) html += '<div class="use-restrictions"><div class="use-box use-allowed"><strong>허용 용도:</strong> ' + data.allowed_uses.join(', ') + '</div></div>';
+              if (data.prohibited_uses && data.prohibited_uses.length) html += '<div class="use-restrictions"><div class="use-box use-prohibited"><strong>불허 용도:</strong> ' + data.prohibited_uses.join(', ') + '</div></div>';
+              if (data.key_changes && data.key_changes.length) html += '<div class="changes-box"><strong>주요 변경:</strong><ul>' + data.key_changes.map(function(c){return '<li>'+c+'</li>';}).join('') + '</ul></div>';
+              if (data.gazette_number) html += '<div class="ai-meta">고시번호: ' + data.gazette_number + (data.announcement_date ? ' (' + data.announcement_date + ')' : '') + '</div>';
+              el.className = 'ai-restriction-summary';
+              el.innerHTML = html;
+            })
+            .catch(function() {
+              var el = document.getElementById('aiResult');
+              if (el) el.innerHTML = '<div class="ai-header"><span class="ai-badge ai-badge-fail">AI 분석</span><span class="ai-source">분석 요청 실패</span></div>';
+            });
+        })();
+        </script>
+        {% endif %}
+
+        {# 고시공고 목록 #}
+        <div class="ann-list">
+        {% for ann in announcements %}
+        <div class="announcement-card">
+          <div class="ann-header">
+            {% if ann.category %}<span class="badge badge-cat">{{ ann.category }}</span>{% endif %}
+            {% if ann.district %}<span class="badge badge-district">{{ ann.district }}</span>{% endif %}
+            {% if ann.published_at %}<span class="ann-date">{{ ann.published_at[:10] }}</span>{% endif %}
+            {% if ann.gazette_no %}<span class="ann-gazette">제{{ ann.gazette_no }}호</span>{% endif %}
+          </div>
+          <div class="ann-body">
+            <p class="ann-title-text">{{ ann.title }}</p>
+            {% if ann.raw_content and ann.raw_content|length > 30 %}
+            <p class="ann-cn-preview">{{ ann.raw_content[:200] }}{% if ann.raw_content|length > 200 %}...{% endif %}</p>
+            {% endif %}
+          </div>
+          {% if ann.url %}
+          <div class="ann-footer">
+            <a href="{{ ann.url }}" target="_blank" rel="noopener" class="btn-original">원문 보기 →</a>
+          </div>
+          {% endif %}
+        </div>
+        {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+          <p>관련 고시공고가 없습니다.</p>
+          <small>서버 시작 후 고시공고 데이터를 수집하고 있습니다. 잠시 후 다시 조회해주세요.</small>
+        </div>
+        {% endif %}
+      </section>
+
+      {% endif %} {# end if not error #}
+    </main>
+
+    <footer class="site-footer">
+      <p>데이터 출처: 서울 열린데이터광장, 서울시보, 국가공간정보오픈플랫폼(VWORLD), 토지이음</p>
+    </footer>
+  </div>
+</body>
+</html>
