@@ -359,17 +359,19 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
                 seen.add(n)
                 specific_zone_names.append(n)
 
-        # 동(洞) 이름은 뒤에 추가 (구체적 구역명 우선)
+        # 폴백 계층: 구체적 구역명 → 동 이름 → 자치구명
         emd_nm = addr_info.get("emdNm", "")
-        if emd_nm and emd_nm not in seen:
-            specific_zone_names.append(emd_nm)
-        # 자치구명은 폴백
+        emd_zone_names = [emd_nm] if emd_nm and emd_nm not in seen else []
         district = addr_info.get("sggNm", "")
         fallback_zone_names = [district] if district else []
 
         announcements = get_announcements_for_zones(
             specific_zone_names, conn, settings.seoul_api_key, settings.lookback_days
         )
+        if not announcements and emd_zone_names:
+            announcements = get_announcements_for_zones(
+                emd_zone_names, conn, settings.seoul_api_key, settings.lookback_days
+            )
         if not announcements and fallback_zone_names:
             announcements = get_announcements_for_zones(
                 fallback_zone_names, conn, settings.seoul_api_key, settings.lookback_days
