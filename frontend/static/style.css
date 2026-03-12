@@ -734,6 +734,30 @@ a:hover { text-decoration: underline; }
 .ai-badge-fail {
   background: #dc3545 !important;
 }
+.ai-conf {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin-left: 8px;
+  font-weight: 500;
+}
+.conf-high { background: #d4edda; color: #155724; }
+.conf-medium { background: #fff3cd; color: #856404; }
+.conf-low { background: #e2e3e5; color: #6c757d; }
+.ai-src-label {
+  font-size: 11px;
+  color: #6c757d;
+  margin-left: 8px;
+}
+.ai-fail-guide {
+  font-size: 13px;
+  color: #666;
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: #f8f9fa;
+  border-radius: 6px;
+}
+.ai-fail-guide a { color: #1a56db; }
 
 /* ===== 지구단위계획 연혁 ===== */
 .history-info-table {

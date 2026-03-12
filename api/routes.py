@@ -3,6 +3,7 @@ FastAPI 라우트 정의
 """
 import json
 import logging
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -12,6 +13,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 logger = logging.getLogger(__name__)
+
+# 동시 PDF 분석 방지 (한 번에 1건만)
+_pdf_analysis_lock = threading.Semaphore(1)
 
 _TEMPLATES_DIR = Path(__file__).parent.parent / "frontend" / "templates"
 _STATIC_DIR = Path(__file__).parent.parent / "frontend" / "static"
@@ -93,20 +97,22 @@ def create_app(settings, db_path: Path) -> FastAPI:
     async def health():
         return {"status": "ok", "db": str(db_path)}
 
-    @app.get("/api/analyze-gazette")
-    async def analyze_gazette_api(
-        zone_name: str, gazette_ref: str = "",
-        ann_title: str = "", ann_cn: str = "",
-        upis_content: str = "",
-    ):
-        """비동기 AI 분석 엔드포인트 — 클라이언트에서 AJAX로 호출"""
+    @app.post("/api/analyze-gazette")
+    async def analyze_gazette_api(request: Request):
+        """비동기 AI 분석 엔드포인트 — 클라이언트에서 AJAX POST로 호출"""
         if not settings.anthropic_api_key:
             return JSONResponse(content={"error": "API 키 미설정"}, status_code=503)
+        body = await request.json()
         import asyncio
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
             None, _run_gazette_analysis,
-            zone_name, gazette_ref, ann_title, ann_cn, upis_content, settings
+            body.get("zone_name", ""),
+            body.get("gazette_ref", ""),
+            body.get("ann_title", ""),
+            body.get("ann_cn", ""),
+            body.get("upis_content", ""),
+            settings,
         )
         return JSONResponse(content=result)
 
@@ -117,7 +123,22 @@ def _run_gazette_analysis(
     zone_name: str, gazette_ref: str, ann_title: str, ann_cn: str,
     upis_content: str, settings,
 ) -> dict:
-    """시보 PDF 분석 또는 CN/UPIS 내용 분석 (동기, 3단계 폴백)"""
+    """시보 PDF 분석 또는 CN/UPIS 내용 분석 (동기, 3단계 폴백, 세마포어로 동시 1건)"""
+    acquired = _pdf_analysis_lock.acquire(timeout=5)
+    try:
+        return _run_gazette_analysis_inner(
+            zone_name, gazette_ref, ann_title, ann_cn, upis_content, settings
+        )
+    finally:
+        if acquired:
+            _pdf_analysis_lock.release()
+
+
+def _run_gazette_analysis_inner(
+    zone_name: str, gazette_ref: str, ann_title: str, ann_cn: str,
+    upis_content: str, settings,
+) -> dict:
+    """시보 PDF 분석 또는 CN/UPIS 내용 분석 (3단계 폴백)"""
     # 1차: 시보 PDF 분석 (subprocess 격리)
     if gazette_ref:
         try:
@@ -450,8 +471,8 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
                         "zone_name": primary_zone,
                         "gazette_ref": gazette_ref[:500],
                         "ann_title": ann.get("title", ""),
-                        "ann_cn": cn[:500],
-                        "upis_content": upis_ct[:500],
+                        "ann_cn": cn[:3000],
+                        "upis_content": upis_ct[:3000],
                     }
                     break
 

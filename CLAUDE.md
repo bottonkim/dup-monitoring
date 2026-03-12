@@ -39,14 +39,16 @@
 3. 구역명 → 고시공고 DB 검색 (title + zone_name만 검색, raw_content 제외)
 4. AI 분석: 비동기 AJAX (/api/analyze-gazette) — 3단계 폴백
 
-## AI 분석 파이프라인 (/api/analyze-gazette)
+## AI 분석 파이프라인 (/api/analyze-gazette, POST)
 
-3단계 폴백:
-1. **시보 PDF** (subprocess 격리, 300MB 메모리 제한, 120초 타임아웃)
-2. **고시공고 DB content** (raw_content 10자 이상)
-3. **UPIS 고시 content** (upis_content 10자 이상)
+3단계 폴백 (세마포어로 동시 1건만 처리):
+1. **시보 PDF** — 2단계 처리 (스캔→소형PDF분리→추출), subprocess 격리, 500MB 메모리 제한, 180초 타임아웃
+2. **고시공고 DB content** (raw_content 10자 이상, 최대 3000자)
+3. **UPIS 고시 content** (upis_content 10자 이상, 최대 3000자)
 
-추출 항목 (pdf/claude_analyzer.py):
+캐시 계층: 분석 결과 JSON → 추출 텍스트 → PDF 파일 (한번 성공 시 재처리 불필요)
+
+추출 항목 (pdf/claude_analyzer.py + lookup/announcements.py 동일 스키마):
 1. 건폐율
 2. 기준용적률 / 허용용적률 / 상한용적률
 3. 용적률 완화 조건
@@ -55,6 +57,8 @@
 6. 용도별 비율
 7. 건축/개발 제한사항
 8. 기타사항 (조경, 주차, 기부채납 등)
+
+**중요**: `claude_analyzer.py`(PDF 분석)와 `announcements.py`(CN/UPIS 폴백 분석)의 프롬프트 스키마는 반드시 동일하게 유지
 
 ## 고시공고 매칭 로직
 
@@ -109,9 +113,17 @@ ssh -i ~/.ssh/oracle_cloud ubuntu@168.107.53.76 "cd /opt/dup-monitor && git pull
 ```
 
 **서버 메모리 보호:**
-- 1GB RAM + 2GB Swap
-- 시보 PDF(100MB+) 처리: subprocess 격리 (300MB 제한, OOM 시 자식만 종료)
-- PyMuPDF(fitz) 페이지 단위 스트리밍 + gc.collect()
+- 시보 PDF 2단계 처리: Phase A(페이지 스캔, 번호만 기록) → Phase B(관련 페이지만 소형 PDF로 분리 → 텍스트 추출)
+- subprocess 격리 (500MB 제한, OOM 시 자식만 종료, 180초 타임아웃)
+- 세마포어로 동시 PDF 분석 1건 제한
+- 텍스트/분석 결과 캐시: 동일 시보+구역 재요청 시 PDF 미접근
+
+**서버 스펙 업그레이드 권장:**
+- 현재: VM.Standard.E2.1.Micro (1GB RAM + 2GB Swap, Always Free)
+- **권장: VM.Standard.A1.Flex (ARM, 1 OCPU + 4GB RAM)** — Oracle Always Free 범위 내 무료
+  - Always Free 한도: A1.Flex 최대 4 OCPU + 24GB RAM
+  - 1 OCPU + 4GB 구성이면 PDF 처리에 충분
+- 대안: 현재 서버에서 Swap 2GB → 4GB 확대 (`sudo fallocate -l 4G /swapfile`)
 
 ### Render (백업 / 한국 API 제한)
 - Render 서버(미국)에서 VWORLD API 호출 불가 (Connection aborted / 502)
@@ -122,7 +134,8 @@ ssh -i ~/.ssh/oracle_cloud ubuntu@168.107.53.76 "cd /opt/dup-monitor && git pull
 
 - VWORLD API `domain` 파라미터: `VWORLD_DOMAIN` 환경변수로 설정 (vworld.py, address.py 모두)
 - `routes.py`에서 `address_to_pnu()` 호출 시 반드시 `vworld_domain=settings.vworld_domain` 전달
-- 로딩 오버레이: CSS `display: none` 기본, `.active` 클래스로 `display: flex` 전환
+- 로딩 오버레이: CSS `display: none` 기본, `.active` 클래스로 `display: flex` 전환. 폼 즉시 제출 + 서버 응답 시 자동 전환 (preventDefault 없음)
 - 자동완성: 항목 선택 시 주소만 채움, 폼 자동 제출 안 함
 - 한국 정부 API (VWORLD, juso.go.kr): 해외 서버에서 호출 불가 → 한국 리전 서버 필수
-- 시보 PDF 분석: subprocess로 격리, 메인 서버 보호 (gazette_pdf.py `_extract_in_subprocess`)
+- 시보 PDF 분석: 2단계 처리(스캔→분리→추출) + subprocess 격리 + 텍스트/분석 캐시 (gazette_pdf.py)
+- AI 분석 엔드포인트: POST 방식 (`/api/analyze-gazette`), 프론트엔드에서 JSON body로 요청

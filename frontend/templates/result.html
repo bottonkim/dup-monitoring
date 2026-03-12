@@ -534,7 +534,17 @@
               {% endif %}
 
               {% if ext.gazette_number %}
-              <div class="ai-meta">고시번호: {{ ext.gazette_number }}{% if ext.announcement_date %} ({{ ext.announcement_date }}){% endif %}</div>
+              <div class="ai-meta">
+                고시번호: {{ ext.gazette_number }}{% if ext.announcement_date %} ({{ ext.announcement_date }}){% endif %}
+                {% if ext.confidence %}
+                <span class="ai-conf {% if ext.confidence == 'high' %}conf-high{% elif ext.confidence == 'medium' %}conf-medium{% else %}conf-low{% endif %}">
+                  {% if ext.confidence == 'high' %}신뢰도 높음{% elif ext.confidence == 'medium' %}신뢰도 보통{% else %}신뢰도 낮음{% endif %}
+                </span>
+                {% endif %}
+                {% if ext._gazette_source %}
+                <span class="ai-src-label">{{ ext._gazette_source }}</span>
+                {% endif %}
+              </div>
               {% endif %}
             </div>
           {% endif %}
@@ -555,23 +565,32 @@
         <script>
         (function() {
           var pending = {{ _ai_pending | tojson }};
-          var params = new URLSearchParams({
-            zone_name: pending.zone_name,
-            gazette_ref: pending.gazette_ref,
-            ann_title: pending.ann_title,
-            ann_cn: pending.ann_cn,
-            upis_content: pending.upis_content || ''
-          });
-          fetch('/api/analyze-gazette?' + params.toString())
+          fetch('/api/analyze-gazette', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+              zone_name: pending.zone_name,
+              gazette_ref: pending.gazette_ref,
+              ann_title: pending.ann_title,
+              ann_cn: pending.ann_cn,
+              upis_content: pending.upis_content || ''
+            })
+          })
             .then(function(r) { return r.json(); })
             .then(function(data) {
               var el = document.getElementById('aiResult');
               if (!el) return;
               if (data.error) {
-                el.innerHTML = '<div class="ai-header"><span class="ai-badge ai-badge-fail">AI 분석</span><span class="ai-source">분석을 완료할 수 없습니다</span></div>';
+                el.innerHTML = '<div class="ai-header"><span class="ai-badge ai-badge-fail">AI 분석</span><span class="ai-source">분석을 완료할 수 없습니다</span></div>'
+                  + '<p class="ai-fail-guide">결정조서 상세 내용은 <a href="https://urban.seoul.go.kr" target="_blank">서울도시공간포털</a> 또는 <a href="https://www.seoul.go.kr/news/news_notice.do" target="_blank">서울시 고시공고</a>에서 직접 확인하세요.</p>';
                 return;
               }
-              var html = '<div class="ai-header"><span class="ai-badge">AI 분석</span><span class="ai-source">' + (data.zone_name || pending.ann_title).substring(0, 60) + '</span></div>';
+              var srcLabel = data._gazette_source || '고시공고';
+              var confClass = data.confidence === 'high' ? 'conf-high' : (data.confidence === 'medium' ? 'conf-medium' : 'conf-low');
+              var confText = data.confidence === 'high' ? '높음' : (data.confidence === 'medium' ? '보통' : '낮음');
+              var html = '<div class="ai-header"><span class="ai-badge">AI 분석</span><span class="ai-source">' + (data.zone_name || pending.ann_title).substring(0, 60) + '</span>';
+              html += '<span class="ai-conf ' + confClass + '">' + confText + '</span>';
+              html += '<span class="ai-src-label">' + srcLabel + '</span></div>';
               if (data.summary_korean) html += '<p class="ai-summary-text">' + data.summary_korean + '</p>';
               // ① 건폐율/용적률/높이 그리드
               var hasNums = data.building_coverage_ratio || data.base_floor_area_ratio || data.allowed_floor_area_ratio || data.max_floor_area_ratio || data.floor_area_ratio || data.max_height_meters || data.max_floors;
