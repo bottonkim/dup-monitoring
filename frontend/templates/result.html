@@ -316,7 +316,81 @@
         {% endif %}
       </section>
 
-      <!-- ③ 최신 고시공고 + AI 분석 -->
+      <!-- ③ 지구단위계획 결정 및 변경 연혁 (서울도시공간포털) -->
+      {% if upis_notification or gazette_history %}
+      <section class="result-section">
+        <h3 class="section-title">지구단위계획 결정 및 변경 연혁</h3>
+
+        {# 최신 고시 정보 #}
+        {% if upis_notification %}
+        <div class="upis-notice-card">
+          <div class="upis-notice-header">
+            <span class="badge badge-결정고시">최신 고시</span>
+            <span class="ann-date">{{ upis_notification.notice_date }}</span>
+            <span class="ann-gazette">서울특별시 고시 제{{ upis_notification.notice_no }}호</span>
+          </div>
+          <p class="upis-notice-title">{{ upis_notification.title }}</p>
+          {% if upis_notification.site %}
+          <div class="upis-notice-meta">
+            <span>{{ upis_notification.site }}</span>
+            {% if upis_notification.charger %}<span>담당: {{ upis_notification.charger }}</span>{% endif %}
+            {% if upis_notification.phone %}<span>{{ upis_notification.phone }}</span>{% endif %}
+          </div>
+          {% endif %}
+        </div>
+        {% endif %}
+
+        {# 연혁 테이블 #}
+        {% if gazette_history %}
+        <table class="history-table">
+          <thead>
+            <tr>
+              <th>고시일</th>
+              <th>고시번호</th>
+              <th>내용</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for h in gazette_history %}
+            <tr{% if loop.first %} class="history-row-latest"{% endif %}>
+              <td class="history-date">{{ h.date }}</td>
+              <td>서울특별시 고시 제{{ h.no }}호</td>
+              <td>{{ h.desc or '-' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <p class="history-note">* 전월 기준 자료가 매월 초(10일 이내) 업데이트됩니다.</p>
+        {% endif %}
+
+        {# 도면 문서 목록 #}
+        {% if drawing_documents %}
+        <div class="drawing-docs">
+          <h4 class="drawing-docs-title">첨부 도면</h4>
+          <ul class="drawing-list">
+            {% for doc in drawing_documents %}
+            <li class="drawing-item">
+              <span class="drawing-icon">&#128196;</span>
+              <span class="drawing-name">{{ doc.name }}</span>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+
+        {# 포털 링크 #}
+        <div class="portal-links">
+          {% if urban_portal_url %}
+          <a href="{{ urban_portal_url }}" target="_blank" rel="noopener" class="btn-portal">서울도시공간포털에서 상세 확인 →</a>
+          {% endif %}
+          {% if notice_url %}
+          <a href="{{ notice_url }}" target="_blank" rel="noopener" class="btn-portal btn-portal-sub">고시 원문 보기 →</a>
+          {% endif %}
+        </div>
+      </section>
+      {% endif %}
+
+      <!-- ④ 최신 고시공고 + AI 분석 -->
       <section class="result-section">
         <h3 class="section-title">최신 고시공고</h3>
         {% if announcements %}
@@ -470,7 +544,7 @@
     </main>
 
     <footer class="site-footer">
-      <p>데이터 출처: 서울 열린데이터광장, 서울시보, 국가공간정보오픈플랫폼(VWORLD), 토지이음</p>
+      <p>데이터 출처: 서울도시공간포털, 서울 열린데이터광장, 서울시보, 국가공간정보오픈플랫폼(VWORLD), 토지이음</p>
     </footer>
   </div>
 </body>

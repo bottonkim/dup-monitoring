@@ -719,6 +719,119 @@ a:hover { text-decoration: underline; }
   background: #dc3545 !important;
 }
 
+/* ===== 지구단위계획 연혁 ===== */
+.upis-notice-card {
+  background: #f0f4ff;
+  border-left: 4px solid #003087;
+  border-radius: 0 6px 6px 0;
+  padding: 14px 18px;
+  margin-bottom: 16px;
+}
+.upis-notice-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.upis-notice-title {
+  font-size: 13px;
+  color: #333;
+  line-height: 1.6;
+  margin-bottom: 6px;
+}
+.upis-notice-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: #888;
+  flex-wrap: wrap;
+}
+
+.history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+.history-table th, .history-table td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8ecf4;
+}
+.history-table thead th {
+  background: #f0f4ff;
+  font-weight: 700;
+  color: #444;
+  font-size: 12px;
+}
+.history-table tbody tr:last-child td { border-bottom: none; }
+.history-table tbody tr:hover { background: #f8f9fc; }
+.history-row-latest {
+  background: #eff6ff;
+  font-weight: 600;
+}
+.history-date { white-space: nowrap; color: #555; }
+.history-note {
+  font-size: 11px;
+  color: #999;
+  margin-bottom: 12px;
+}
+
+.drawing-docs {
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  background: #fafbfd;
+  border-radius: 6px;
+  border: 1px solid #e8ecf4;
+}
+.drawing-docs-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #444;
+  margin-bottom: 8px;
+}
+.drawing-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.drawing-item {
+  font-size: 12px;
+  color: #555;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.drawing-icon { font-size: 14px; }
+.drawing-name { word-break: break-all; }
+
+.portal-links {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.btn-portal {
+  display: inline-block;
+  padding: 8px 18px;
+  background: #003087;
+  color: white;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.btn-portal:hover { background: #00256a; text-decoration: none; color: white; }
+.btn-portal-sub {
+  background: white;
+  color: #003087;
+  border: 1px solid #003087;
+}
+.btn-portal-sub:hover { background: #003087; color: white; }
+
 /* ===== 반응형 ===== */
 @media (max-width: 600px) {
   .search-box { flex-direction: column; }

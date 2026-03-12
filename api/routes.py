@@ -228,9 +228,10 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
 
         def _task_upis():
             if not pnu:
-                return []
-            from lookup.urban_seoul import fetch_zone_names as fetch_upis_names
-            return fetch_upis_names(pnu, timeout=min(to, 25))
+                return {"zones": [], "notification": None, "gazette_history": [],
+                        "drawing_documents": [], "portal_url": "", "notice_url": None}
+            from lookup.urban_seoul import fetch_zone_data
+            return fetch_zone_data(pnu, timeout=min(to, 25))
 
         def _task_tojieum():
             return fetch_land_use_plan(pnu, to, jibun_address=addr_info.get("address_full", ""))
@@ -247,8 +248,11 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
         parcel   = f_parcel.result()   or {}
         specific = f_specific.result() or []
         wfs_zones = f_wfs.result()     or []
-        upis_zones = f_upis.result()   or []
+        upis_data = f_upis.result()    or {}
         tojieum  = f_tojieum.result()  or {}
+
+        # fetch_zone_data() → dict with zones, notification, etc.
+        upis_zones = upis_data.get("zones", []) if isinstance(upis_data, dict) else upis_data or []
 
         # --- 후처리: 구역별 법적 근거 분류 ---
         _NATL_LAYERS = {"lt_c_uq111", "lt_c_uq121", "lt_c_uq123",
@@ -326,6 +330,14 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
                         "source": "urban_seoul",
                     })
             result["upis_zones"] = upis_zones
+
+        # 후처리: UPIS 고시/연혁 정보 (2f)
+        if isinstance(upis_data, dict):
+            result["upis_notification"] = upis_data.get("notification")
+            result["gazette_history"] = upis_data.get("gazette_history", [])
+            result["drawing_documents"] = upis_data.get("drawing_documents", [])
+            result["urban_portal_url"] = upis_data.get("portal_url", "")
+            result["notice_url"] = upis_data.get("notice_url")
 
         # 후처리: 토지이음 (3)
         result["tojieum_info"] = tojieum
