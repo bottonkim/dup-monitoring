@@ -174,20 +174,120 @@ def _extract_relevant_pages(
     context_pages: int = 12,
     max_chars: int = 50_000,
 ) -> str | None:
-    """PDF에서 검색어가 포함된 페이지 클러스터 추출 (목차 제외, 본문만)"""
+    """PDF에서 검색어가 포함된 페이지 클러스터 추출 (메모리 효율적, 페이지 단위 처리)"""
+    # PyMuPDF(fitz) 우선 사용 — C 기반으로 메모리 효율적
+    try:
+        import fitz  # pymupdf
+        return _extract_with_pymupdf(pdf_path, search_terms, context_pages, max_chars)
+    except ImportError:
+        logger.debug("pymupdf 미설치, pdfplumber 폴백")
+
+    # 폴백: pdfplumber (메모리 많이 사용)
     try:
         import pdfplumber
     except ImportError:
-        logger.error("pdfplumber 미설치")
+        logger.error("pdfplumber/pymupdf 모두 미설치")
         return None
+
+    return _extract_with_pdfplumber(pdf_path, search_terms, context_pages, max_chars)
+
+
+def _extract_with_pymupdf(
+    pdf_path: Path,
+    search_terms: list[str],
+    context_pages: int,
+    max_chars: int,
+) -> str | None:
+    """PyMuPDF(fitz)로 페이지 단위 스트리밍 추출 — 대용량 PDF에 적합"""
+    import fitz
+    import gc
+
+    doc = fitz.open(str(pdf_path))
+    total = len(doc)
+    logger.debug(f"시보 PDF (pymupdf): {total} 페이지, {pdf_path.stat().st_size / 1024 / 1024:.1f}MB")
+
+    # 1단계: 키워드 포함 페이지 스캔 (페이지별로 처리 후 즉시 해제)
+    matched_pages = []
+    primary_term = search_terms[0] if search_terms else ""
+    if not primary_term:
+        doc.close()
+        return None
+
+    for i in range(total):
+        page = doc.load_page(i)
+        text = page.get_text("text") or ""
+        if primary_term in text:
+            matched_pages.append(i)
+        # 명시적 메모리 해제
+        del text
+        if i % 50 == 0:
+            gc.collect()
+
+    if not matched_pages:
+        doc.close()
+        logger.debug(f"시보에서 '{primary_term}' 미발견")
+        return None
+
+    # 2단계: 클러스터링
+    clusters = []
+    cur_cluster = [matched_pages[0]]
+    for p in matched_pages[1:]:
+        if p - cur_cluster[-1] <= 5:
+            cur_cluster.append(p)
+        else:
+            clusters.append(cur_cluster)
+            cur_cluster = [p]
+    clusters.append(cur_cluster)
+
+    # 3단계: 본문 클러스터 선택 (목차 제외)
+    best_cluster = None
+    for cl in clusters:
+        if min(cl) < 10 and len(cl) <= 2:
+            continue
+        if best_cluster is None or len(cl) > len(best_cluster):
+            best_cluster = cl
+
+    if not best_cluster:
+        best_cluster = clusters[-1]
+
+    # 4단계: 해당 페이지만 텍스트 추출
+    start = max(0, min(best_cluster))
+    end = min(total, max(best_cluster) + context_pages + 1)
+
+    pages_text = []
+    for i in range(start, end):
+        page = doc.load_page(i)
+        text = page.get_text("text") or ""
+        if text.strip():
+            pages_text.append(f"--- {i+1}페이지 ---\n{text}")
+        del text
+
+    doc.close()
+    gc.collect()
+
+    full_text = "\n\n".join(pages_text)
+    if len(full_text) > max_chars:
+        full_text = full_text[:max_chars] + "\n\n[... 이하 생략 ...]"
+
+    logger.info(f"시보 관련 페이지 (pymupdf): {len(pages_text)}페이지 (p{start+1}-{end}), {len(full_text)}자")
+    return full_text
+
+
+def _extract_with_pdfplumber(
+    pdf_path: Path,
+    search_terms: list[str],
+    context_pages: int,
+    max_chars: int,
+) -> str | None:
+    """pdfplumber 폴백 (pymupdf 미설치 시)"""
+    import pdfplumber
 
     matched_pages = []
 
     with pdfplumber.open(str(pdf_path)) as pdf:
         total = len(pdf.pages)
-        logger.debug(f"시보 PDF: {total} 페이지")
+        logger.debug(f"시보 PDF (pdfplumber): {total} 페이지")
 
-        # 1단계: 검색어 포함 페이지 찾기
         for i, page in enumerate(pdf.pages):
             try:
                 text = page.extract_text(x_tolerance=3, y_tolerance=3) or ""
@@ -199,35 +299,29 @@ def _extract_relevant_pages(
         if not matched_pages:
             return None
 
-        # 2단계: 클러스터링 — 연속/근접 페이지를 그룹으로 묶기
-        # 목차(앞쪽 10페이지 이내)와 본문(뒤쪽)을 구분
         clusters = []
         cur_cluster = [matched_pages[0]]
         for p in matched_pages[1:]:
-            if p - cur_cluster[-1] <= 5:  # 5페이지 이내면 같은 클러스터
+            if p - cur_cluster[-1] <= 5:
                 cur_cluster.append(p)
             else:
                 clusters.append(cur_cluster)
                 cur_cluster = [p]
         clusters.append(cur_cluster)
 
-        # 3단계: 본문 클러스터 선택 (가장 큰 클러스터, 목차 제외)
-        # 목차는 보통 앞 10페이지 이내에 있음
         best_cluster = None
         for cl in clusters:
             if min(cl) < 10 and len(cl) <= 2:
-                continue  # 목차 스킵
+                continue
             if best_cluster is None or len(cl) > len(best_cluster):
                 best_cluster = cl
 
         if not best_cluster:
-            best_cluster = clusters[-1]  # 마지막 클러스터라도 사용
+            best_cluster = clusters[-1]
 
-        # 4단계: 클러스터 주변 페이지 확장
         start = max(0, min(best_cluster))
         end = min(total, max(best_cluster) + context_pages + 1)
 
-        # 페이지 텍스트 추출
         pages_text = []
         for i in range(start, end):
             try:
@@ -238,10 +332,8 @@ def _extract_relevant_pages(
                 pass
 
     full_text = "\n\n".join(pages_text)
-
-    # 크기 제한
     if len(full_text) > max_chars:
         full_text = full_text[:max_chars] + "\n\n[... 이하 생략 ...]"
 
-    logger.info(f"시보 관련 페이지: {len(pages_text)}페이지 (p{start+1}-{end}), {len(full_text)}자")
+    logger.info(f"시보 관련 페이지 (pdfplumber): {len(pages_text)}페이지 (p{start+1}-{end}), {len(full_text)}자")
     return full_text
