@@ -328,34 +328,45 @@
       <section class="result-section">
         <h3 class="section-title">지구단위계획 결정 및 변경 연혁</h3>
 
-        {# 최신 고시 정보 #}
+        {# 최신 고시 정보 — 테이블 형태 #}
         {% if upis_notification %}
-        <div class="upis-notice-card">
-          <div class="upis-notice-header">
-            <span class="badge badge-결정고시">최신 고시</span>
-            <span class="ann-date">{{ upis_notification.notice_date }}</span>
-            {% if upis_notification.notice_code %}
-            <a href="https://urban.seoul.go.kr/view/html/PMNU4030100001?noticeCode={{ upis_notification.notice_code }}" target="_blank" rel="noopener" class="ann-gazette-link">서울특별시 고시 제{{ upis_notification.notice_no }}호 →</a>
-            {% else %}
-            <span class="ann-gazette">서울특별시 고시 제{{ upis_notification.notice_no }}호</span>
+        <table class="history-info-table">
+          <tbody>
+            <tr>
+              <th>최신 고시번호</th>
+              <td>
+                {% if upis_notification.notice_code %}
+                <a href="https://urban.seoul.go.kr/view/html/PMNU4030100001?noticeCode={{ upis_notification.notice_code }}" target="_blank" rel="noopener" class="history-link">서울특별시 고시 제{{ upis_notification.notice_no }}호 →</a>
+                {% else %}
+                서울특별시 고시 제{{ upis_notification.notice_no }}호
+                {% endif %}
+              </td>
+              <th>고시일</th>
+              <td>{{ upis_notification.notice_date }}</td>
+            </tr>
+            <tr>
+              <th>고시명</th>
+              <td colspan="3">{{ upis_notification.title }}</td>
+            </tr>
+            {% if upis_notification.site or upis_notification.charger %}
+            <tr>
+              <th>처리기관</th>
+              <td>{{ upis_notification.site }}</td>
+              <th>담당자</th>
+              <td>{{ upis_notification.charger }}{% if upis_notification.phone %} ({{ upis_notification.phone }}){% endif %}</td>
+            </tr>
             {% endif %}
-          </div>
-          <p class="upis-notice-title">{{ upis_notification.title }}</p>
-          {% if upis_notification.site %}
-          <div class="upis-notice-meta">
-            <span>{{ upis_notification.site }}</span>
-            {% if upis_notification.charger %}<span>담당: {{ upis_notification.charger }}</span>{% endif %}
-            {% if upis_notification.phone %}<span>{{ upis_notification.phone }}</span>{% endif %}
-          </div>
-          {% endif %}
-        </div>
+          </tbody>
+        </table>
         {% endif %}
 
         {# 연혁 테이블 #}
         {% if gazette_history %}
+        <h4 class="history-sub-title">결정/변경 연혁 ({{ gazette_history|length }}건)</h4>
         <table class="history-table">
           <thead>
             <tr>
+              <th class="history-col-no">#</th>
               <th>고시일</th>
               <th>고시번호</th>
               <th>내용</th>
@@ -364,6 +375,7 @@
           <tbody>
             {% for h in gazette_history %}
             <tr{% if loop.first %} class="history-row-latest"{% endif %}>
+              <td class="history-col-no">{{ loop.index }}</td>
               <td class="history-date">{{ h.date }}</td>
               <td>
                 {% if h.notice_code %}
@@ -384,33 +396,31 @@
 
         {# 도면 문서 목록 #}
         {% if drawing_documents %}
-        <div class="drawing-docs">
-          <h4 class="drawing-docs-title">첨부 도면 ({{ drawing_documents|length }}건)</h4>
-          <table class="drawing-table">
-            <thead>
-              <tr>
-                <th class="drawing-col-no">#</th>
-                <th>파일명</th>
-                <th class="drawing-col-action">보기</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for doc in drawing_documents %}
-              <tr>
-                <td class="drawing-col-no">{{ loop.index }}</td>
-                <td class="drawing-file-name">{{ doc.name }}</td>
-                <td class="drawing-col-action">
-                  {% if doc.download_url %}
-                  <a href="{{ doc.download_url }}" target="_blank" rel="noopener" class="btn-drawing-view">열기</a>
-                  {% else %}
-                  <span class="drawing-no-link">-</span>
-                  {% endif %}
-                </td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
+        <h4 class="history-sub-title">첨부 도면 ({{ drawing_documents|length }}건)</h4>
+        <table class="drawing-table">
+          <thead>
+            <tr>
+              <th class="drawing-col-no">#</th>
+              <th>파일명</th>
+              <th class="drawing-col-action">보기</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for doc in drawing_documents %}
+            <tr>
+              <td class="drawing-col-no">{{ loop.index }}</td>
+              <td class="drawing-file-name">{{ doc.name }}</td>
+              <td class="drawing-col-action">
+                {% if doc.download_url %}
+                <a href="{{ doc.download_url }}" target="_blank" rel="noopener" class="btn-drawing-view">열기</a>
+                {% else %}
+                <span class="drawing-no-link">-</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
         {% endif %}
 
         {# 포털 링크 #}
