@@ -53,12 +53,11 @@ def analyze_gazette_for_zone(
     if not pdf_path:
         return None
 
-    # 4. 관련 페이지 추출
-    # 검색 키워드: 구역명의 핵심 부분
+    # 4. 관련 페이지 추출 (subprocess 격리 — OOM 시 메인 프로세스 보호)
     search_terms = _build_search_terms(zone_name)
-    extracted_text = _extract_relevant_pages(pdf_path, search_terms)
+    extracted_text = _extract_in_subprocess(pdf_path, search_terms)
     if not extracted_text:
-        logger.debug(f"시보에서 관련 페이지 미발견: {zone_name}")
+        logger.debug(f"시보에서 관련 페이지 미발견 또는 추출 실패: {zone_name}")
         return None
 
     # 5. Claude 분석
@@ -166,6 +165,62 @@ def _build_search_terms(zone_name: str) -> list[str]:
     if not terms and zone_name:
         terms = [zone_name[:4]]
     return terms
+
+
+def _extract_in_subprocess(
+    pdf_path: Path,
+    search_terms: list[str],
+    context_pages: int = 12,
+    max_chars: int = 50_000,
+    timeout: int = 120,
+) -> str | None:
+    """자식 프로세스에서 PDF 텍스트 추출 — OOM 시 메인 서버 보호"""
+    import multiprocessing
+
+    q = multiprocessing.Queue()
+
+    def _worker(q, path_str, terms, ctx_pages, mx_chars):
+        try:
+            import resource
+            mem_limit = 300 * 1024 * 1024  # 300MB
+            resource.setrlimit(resource.RLIMIT_AS, (mem_limit, mem_limit))
+        except (ImportError, ValueError, OSError):
+            pass  # Windows 또는 제한 불가 환경
+        try:
+            text = _extract_relevant_pages(Path(path_str), terms, ctx_pages, mx_chars)
+            q.put(("ok", text))
+        except Exception as e:
+            q.put(("error", str(e)))
+
+    p = multiprocessing.Process(
+        target=_worker,
+        args=(q, str(pdf_path), search_terms, context_pages, max_chars),
+    )
+    p.start()
+    p.join(timeout)
+
+    if p.is_alive():
+        p.kill()
+        p.join(5)
+        logger.warning(f"PDF 추출 타임아웃 ({timeout}초): {pdf_path.name}")
+        return None
+
+    if p.exitcode != 0:
+        logger.warning(f"PDF 추출 프로세스 비정상 종료 (exit={p.exitcode}): {pdf_path.name}")
+
+    if q.empty():
+        logger.warning(f"PDF 추출 결과 없음 (OOM 또는 크래시): {pdf_path.name}")
+        return None
+
+    try:
+        status, result = q.get_nowait()
+    except Exception:
+        return None
+
+    if status == "ok":
+        return result
+    logger.warning(f"PDF 추출 오류: {result}")
+    return None
 
 
 def _extract_relevant_pages(

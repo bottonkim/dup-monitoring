@@ -471,7 +471,8 @@
             zone_name: pending.zone_name,
             gazette_ref: pending.gazette_ref,
             ann_title: pending.ann_title,
-            ann_cn: pending.ann_cn
+            ann_cn: pending.ann_cn,
+            upis_content: pending.upis_content || ''
           });
           fetch('/api/analyze-gazette?' + params.toString())
             .then(function(r) { return r.json(); })

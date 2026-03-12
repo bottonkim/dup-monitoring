@@ -94,7 +94,11 @@ def create_app(settings, db_path: Path) -> FastAPI:
         return {"status": "ok", "db": str(db_path)}
 
     @app.get("/api/analyze-gazette")
-    async def analyze_gazette_api(zone_name: str, gazette_ref: str = "", ann_title: str = "", ann_cn: str = ""):
+    async def analyze_gazette_api(
+        zone_name: str, gazette_ref: str = "",
+        ann_title: str = "", ann_cn: str = "",
+        upis_content: str = "",
+    ):
         """비동기 AI 분석 엔드포인트 — 클라이언트에서 AJAX로 호출"""
         if not settings.anthropic_api_key:
             return JSONResponse(content={"error": "API 키 미설정"}, status_code=503)
@@ -102,16 +106,19 @@ def create_app(settings, db_path: Path) -> FastAPI:
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
             None, _run_gazette_analysis,
-            zone_name, gazette_ref, ann_title, ann_cn, settings
+            zone_name, gazette_ref, ann_title, ann_cn, upis_content, settings
         )
         return JSONResponse(content=result)
 
     return app
 
 
-def _run_gazette_analysis(zone_name: str, gazette_ref: str, ann_title: str, ann_cn: str, settings) -> dict:
-    """시보 PDF 분석 또는 CN 내용 분석 (동기)"""
-    # 1차: 시보 PDF 분석
+def _run_gazette_analysis(
+    zone_name: str, gazette_ref: str, ann_title: str, ann_cn: str,
+    upis_content: str, settings,
+) -> dict:
+    """시보 PDF 분석 또는 CN/UPIS 내용 분석 (동기, 3단계 폴백)"""
+    # 1차: 시보 PDF 분석 (subprocess 격리)
     if gazette_ref:
         try:
             from lookup.gazette_pdf import analyze_gazette_for_zone
@@ -126,7 +133,7 @@ def _run_gazette_analysis(zone_name: str, gazette_ref: str, ann_title: str, ann_
             logger.debug(f"시보 PDF 분석 실패: {e}")
 
     # 2차: CN 내용 분석 폴백
-    if ann_cn and len(ann_cn) >= 20:
+    if ann_cn and len(ann_cn) >= 10:
         try:
             from lookup.announcements import analyze_announcement_with_claude
             analysis = analyze_announcement_with_claude(
@@ -137,6 +144,19 @@ def _run_gazette_analysis(zone_name: str, gazette_ref: str, ann_title: str, ann_
                 return analysis
         except Exception as e:
             logger.debug(f"Claude 고시 분석 실패: {e}")
+
+    # 3차: UPIS 고시 content 분석 폴백
+    if upis_content and len(upis_content) >= 10:
+        try:
+            from lookup.announcements import analyze_announcement_with_claude
+            analysis = analyze_announcement_with_claude(
+                f"{zone_name} 결정고시", upis_content,
+                settings.anthropic_api_key, settings.claude_model,
+            )
+            if analysis and not analysis.get("error"):
+                return analysis
+        except Exception as e:
+            logger.debug(f"UPIS 고시 분석 실패: {e}")
 
     return {"error": "분석 실패"}
 
@@ -422,11 +442,16 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
                 cn = ann.get("raw_content") or ann.get("cn_content") or ""
                 gazette_ref = cn if cn else ann.get("title", "")
                 if gazette_ref and primary_zone:
+                    upis_ct = ""
+                    if isinstance(upis_data, dict):
+                        ntfc = upis_data.get("notification") or {}
+                        upis_ct = ntfc.get("content", "") if isinstance(ntfc, dict) else ""
                     result["_ai_pending"] = {
                         "zone_name": primary_zone,
                         "gazette_ref": gazette_ref[:500],
                         "ann_title": ann.get("title", ""),
                         "ann_cn": cn[:500],
+                        "upis_content": upis_ct[:500],
                     }
                     break
 
