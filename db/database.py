@@ -53,13 +53,15 @@ def upsert_announcement(conn: sqlite3.Connection, record: dict) -> tuple[int, bo
         cur = conn.execute(
             """INSERT INTO announcements
                (source, source_id, title, category, district, zone_name,
-                published_at, fetched_at, url, content_hash, raw_content, is_new)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,1)""",
+                published_at, fetched_at, url, content_hash, raw_content, is_new,
+                content_quality)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,1,?)""",
             (
                 record["source"], record["source_id"], record["title"],
                 record.get("category"), record.get("district"), record.get("zone_name"),
                 record.get("published_at"), now_iso(), record.get("url"),
                 record["content_hash"], record.get("raw_content"),
+                record.get("content_quality", "summary"),
             )
         )
         conn.commit()
@@ -70,12 +72,14 @@ def upsert_announcement(conn: sqlite3.Connection, record: dict) -> tuple[int, bo
             """UPDATE announcements
                SET title=?, category=?, district=?, zone_name=?,
                    published_at=?, fetched_at=?, url=?,
-                   content_hash=?, raw_content=?, is_new=1, notified_at=NULL
+                   content_hash=?, raw_content=?, is_new=1, notified_at=NULL,
+                   content_quality=?
                WHERE id=?""",
             (
                 record["title"], record.get("category"), record.get("district"),
                 record.get("zone_name"), record.get("published_at"), now_iso(),
                 record.get("url"), record["content_hash"], record.get("raw_content"),
+                record.get("content_quality", "summary"),
                 existing["id"],
             )
         )
@@ -125,7 +129,8 @@ def mark_notified(conn: sqlite3.Connection, ids: list[int]):
 
 
 def search_announcements_by_zone(conn: sqlite3.Connection, zone_names: list[str], limit: int = 10) -> list[sqlite3.Row]:
-    """구역명 키워드로 고시공고 검색 (title + zone_name만 — raw_content는 오매칭 방지 위해 제외)"""
+    """구역명 키워드로 고시공고 검색 (title + zone_name만 — raw_content는 오매칭 방지 위해 제외).
+    content_quality='detailed' 우선 정렬."""
     results = []
     seen_ids = set()
     for zone in zone_names:
@@ -136,7 +141,9 @@ def search_announcements_by_zone(conn: sqlite3.Connection, zone_names: list[str]
                LEFT JOIN pdf_attachments pa ON pa.announcement_id = a.id
                LEFT JOIN pdf_extractions pe ON pe.pdf_attachment_id = pa.id
                WHERE (a.zone_name LIKE ? OR a.title LIKE ?)
-               ORDER BY a.published_at DESC
+               ORDER BY
+                   CASE a.content_quality WHEN 'detailed' THEN 0 ELSE 1 END,
+                   a.published_at DESC
                LIMIT ?""",
             (keyword, keyword, limit)
         ).fetchall()

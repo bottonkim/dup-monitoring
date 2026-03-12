@@ -206,6 +206,21 @@ def _build_search_terms(zone_name: str) -> list[str]:
 # 2단계 PDF 처리 (subprocess 격리)
 # ─────────────────────────────────────────────
 
+def _subprocess_worker(q, path_str, terms, ctx_pages, mx_chars):
+    """subprocess에서 실행되는 PDF 추출 워커 (모듈 레벨 — Windows pickle 호환)"""
+    try:
+        import resource
+        mem_limit = 500 * 1024 * 1024  # 500MB
+        resource.setrlimit(resource.RLIMIT_AS, (mem_limit, mem_limit))
+    except (ImportError, ValueError, OSError):
+        pass  # Windows 또는 제한 불가 환경
+    try:
+        text = _phased_extract(Path(path_str), terms, ctx_pages, mx_chars)
+        q.put(("ok", text))
+    except Exception as e:
+        q.put(("error", str(e)))
+
+
 def _extract_in_subprocess(
     pdf_path: Path,
     search_terms: list[str],
@@ -216,26 +231,23 @@ def _extract_in_subprocess(
     """
     자식 프로세스에서 2단계 PDF 처리 — OOM 시 메인 서버 보호.
     타임아웃 180초 (대용량 PDF 스캔+분리+추출 고려).
+    Windows에서는 subprocess spawn이 느리므로 직접 호출.
     """
+    import sys
+    if sys.platform == "win32":
+        # Windows: subprocess spawn 오버헤드 회피 → 직접 호출
+        try:
+            return _phased_extract(pdf_path, search_terms, context_pages, max_chars)
+        except Exception as e:
+            logger.warning(f"PDF 추출 오류 (direct): {e}")
+            return None
+
     import multiprocessing
 
     q = multiprocessing.Queue()
 
-    def _worker(q, path_str, terms, ctx_pages, mx_chars):
-        try:
-            import resource
-            mem_limit = 500 * 1024 * 1024  # 500MB
-            resource.setrlimit(resource.RLIMIT_AS, (mem_limit, mem_limit))
-        except (ImportError, ValueError, OSError):
-            pass  # Windows 또는 제한 불가 환경
-        try:
-            text = _phased_extract(Path(path_str), terms, ctx_pages, mx_chars)
-            q.put(("ok", text))
-        except Exception as e:
-            q.put(("error", str(e)))
-
     p = multiprocessing.Process(
-        target=_worker,
+        target=_subprocess_worker,
         args=(q, str(pdf_path), search_terms, context_pages, max_chars),
     )
     p.start()

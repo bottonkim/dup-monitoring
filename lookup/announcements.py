@@ -21,6 +21,18 @@ _DISTRICTS = [
     "은평구", "종로구", "중구", "중랑구",
 ]
 
+# 결정조서 상세 콘텐츠 판별 키워드
+_DETAIL_KEYWORDS = ("건폐율", "용적률", "허용용도", "불허용도", "높이제한", "결정조서",
+                    "허용 용도", "불허 용도", "상한용적률")
+
+
+def _classify_content_quality(text: str) -> str:
+    """텍스트의 결정조서 상세 포함 여부 판별"""
+    if not text or len(text) < 10:
+        return "minimal"
+    hits = sum(1 for kw in _DETAIL_KEYWORDS if kw in text)
+    return "detailed" if hits >= 2 else "summary"
+
 
 def get_announcements_for_zones(
     zone_names: list[str],
@@ -102,6 +114,8 @@ def _search_seoul_api(zone_names: list[str], api_key: str, limit: int = 10) -> l
                     "url": "",
                     "structured_json": None,
                     "cn_content": cn,
+                    "raw_content": cn[:10000],
+                    "content_quality": _classify_content_quality(cn),
                     "gazette_no": item.get("ANCMNT_NO") or "",
                 })
 
@@ -198,7 +212,8 @@ def import_all_upis_announcements(api_key: str, db_path: Path, max_pages: int = 
                     "published_at": _normalize_date(pub_date),
                     "url": "",
                     "content_hash": c_hash,
-                    "raw_content": cn[:3000],
+                    "raw_content": cn[:10000],
+                    "content_quality": _classify_content_quality(cn),
                 })
                 imported += 1
                 if is_new:

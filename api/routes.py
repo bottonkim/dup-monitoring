@@ -112,6 +112,8 @@ def create_app(settings, db_path: Path) -> FastAPI:
             body.get("ann_title", ""),
             body.get("ann_cn", ""),
             body.get("upis_content", ""),
+            body.get("content_quality", "summary"),
+            body.get("pdf_urls", []),
             settings,
         )
         return JSONResponse(content=result)
@@ -121,13 +123,14 @@ def create_app(settings, db_path: Path) -> FastAPI:
 
 def _run_gazette_analysis(
     zone_name: str, gazette_ref: str, ann_title: str, ann_cn: str,
-    upis_content: str, settings,
+    upis_content: str, content_quality: str, pdf_urls: list, settings,
 ) -> dict:
-    """시보 PDF 분석 또는 CN/UPIS 내용 분석 (동기, 3단계 폴백, 세마포어로 동시 1건)"""
+    """AI 분석 (동기, 6단계 폴백, 세마포어로 동시 1건). 시보 PDF는 최후 수단."""
     acquired = _pdf_analysis_lock.acquire(timeout=5)
     try:
         return _run_gazette_analysis_inner(
-            zone_name, gazette_ref, ann_title, ann_cn, upis_content, settings
+            zone_name, gazette_ref, ann_title, ann_cn,
+            upis_content, content_quality, pdf_urls or [], settings
         )
     finally:
         if acquired:
@@ -136,10 +139,68 @@ def _run_gazette_analysis(
 
 def _run_gazette_analysis_inner(
     zone_name: str, gazette_ref: str, ann_title: str, ann_cn: str,
-    upis_content: str, settings,
+    upis_content: str, content_quality: str, pdf_urls: list, settings,
 ) -> dict:
-    """시보 PDF 분석 또는 CN/UPIS 내용 분석 (3단계 폴백)"""
-    # 1차: 시보 PDF 분석 (subprocess 격리)
+    """AI 분석 6단계 폴백 — 시보 PDF는 최후 수단.
+    1. ann_cn (detailed) — 서울시 고시 상세페이지 본문 등
+    2. upis_content (detailed) — UPIS CN 결정조서
+    3. ann_cn (summary) — 요약 수준이라도 분석 시도
+    4. 첨부 PDF (1-30MB) — 서울시/구청 고시 첨부 PDF 즉시 분석
+    5. 시보 PDF (subprocess 격리) — 위에서 미확보 시에만
+    6. upis_content (summary 폴백)
+    """
+    from lookup.announcements import analyze_announcement_with_claude
+
+    _DETAIL_KEYWORDS = ("건폐율", "용적률", "허용용도", "불허용도", "높이제한", "결정조서")
+
+    def _is_detailed(text: str) -> bool:
+        return sum(1 for kw in _DETAIL_KEYWORDS if kw in text) >= 2
+
+    def _try_claude(title: str, content: str, source_label: str) -> dict | None:
+        if not content or len(content) < 10:
+            return None
+        try:
+            analysis = analyze_announcement_with_claude(
+                title, content,
+                settings.anthropic_api_key, settings.claude_model,
+            )
+            if analysis and not analysis.get("error"):
+                analysis["_gazette_source"] = source_label
+                return analysis
+        except Exception as e:
+            logger.debug(f"{source_label} 분석 실패: {e}")
+        return None
+
+    # 1차: ann_cn이 detailed (결정조서 키워드 포함)
+    if ann_cn and _is_detailed(ann_cn):
+        r = _try_claude(ann_title, ann_cn, "고시 상세")
+        if r:
+            return r
+
+    # 2차: UPIS content가 detailed
+    if upis_content and _is_detailed(upis_content):
+        r = _try_claude(f"{zone_name} 결정고시", upis_content, "UPIS 상세")
+        if r:
+            return r
+
+    # 3차: ann_cn이 summary 수준이라도 분석 시도
+    if ann_cn and len(ann_cn) >= 10 and not _is_detailed(ann_cn):
+        r = _try_claude(ann_title, ann_cn, "고시공고")
+        if r:
+            return r
+
+    # 4차: 첨부 PDF 즉시 분석 (1-30MB, subprocess 불필요)
+    if pdf_urls:
+        try:
+            from lookup.pdf_quick_analyze import analyze_small_pdf
+            for pu in pdf_urls[:3]:
+                r = analyze_small_pdf(pu, ann_title, settings.anthropic_api_key, settings.claude_model)
+                if r and not r.get("error"):
+                    return r
+        except Exception as e:
+            logger.debug(f"첨부 PDF 분석 실패: {e}")
+
+    # 5차: 시보 PDF (최후 수단, subprocess 격리)
     if gazette_ref:
         try:
             from lookup.gazette_pdf import analyze_gazette_for_zone
@@ -149,35 +210,16 @@ def _run_gazette_analysis_inner(
                 settings.claude_model,
             )
             if analysis and not analysis.get("error"):
+                analysis["_gazette_source"] = "시보 PDF"
                 return analysis
         except Exception as e:
             logger.debug(f"시보 PDF 분석 실패: {e}")
 
-    # 2차: CN 내용 분석 폴백
-    if ann_cn and len(ann_cn) >= 10:
-        try:
-            from lookup.announcements import analyze_announcement_with_claude
-            analysis = analyze_announcement_with_claude(
-                ann_title, ann_cn,
-                settings.anthropic_api_key, settings.claude_model,
-            )
-            if analysis and not analysis.get("error"):
-                return analysis
-        except Exception as e:
-            logger.debug(f"Claude 고시 분석 실패: {e}")
-
-    # 3차: UPIS 고시 content 분석 폴백
-    if upis_content and len(upis_content) >= 10:
-        try:
-            from lookup.announcements import analyze_announcement_with_claude
-            analysis = analyze_announcement_with_claude(
-                f"{zone_name} 결정고시", upis_content,
-                settings.anthropic_api_key, settings.claude_model,
-            )
-            if analysis and not analysis.get("error"):
-                return analysis
-        except Exception as e:
-            logger.debug(f"UPIS 고시 분석 실패: {e}")
+    # 6차: UPIS summary 폴백
+    if upis_content and len(upis_content) >= 10 and not _is_detailed(upis_content):
+        r = _try_claude(f"{zone_name} 결정고시", upis_content, "UPIS 고시")
+        if r:
+            return r
 
     return {"error": "분석 실패"}
 
@@ -412,10 +454,56 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
                 seen.add(n)
                 specific_zone_names.append(n)
 
+        # 4b. 5가지 소스 병렬 실시간 검색 (구역명 확보 후)
+        # 서울시 고시 + 구청 고시 + 구청 구보 + 구청 지구단위계획
+        seoul_notice_results = []
+        gu_results = []
+        district = addr_info.get("sggNm", "")
+        if specific_zone_names:
+            def _search_seoul_notices():
+                from lookup.seoul_notice import search_seoul_announcements
+                return search_seoul_announcements(specific_zone_names[:3], limit=5, timeout=min(to, 15))
+
+            def _search_gu_announce():
+                if not district:
+                    return []
+                from lookup.gu_announce import fetch_gu_announcements
+                return fetch_gu_announcements(district, specific_zone_names[:3], limit=5, timeout=min(to, 15))
+
+            def _search_gu_gazette():
+                if not district:
+                    return []
+                from lookup.gu_gazette import fetch_gu_gazette
+                return fetch_gu_gazette(district, specific_zone_names[:2], limit=3, timeout=min(to, 15))
+
+            def _search_gu_planning():
+                if not district:
+                    return []
+                from lookup.gu_planning import fetch_gu_planning
+                return fetch_gu_planning(district, specific_zone_names[:3], limit=5, timeout=min(to, 15))
+
+            with ThreadPoolExecutor(max_workers=4) as pool2:
+                f_seoul = pool2.submit(_safe, _search_seoul_notices)
+                f_gu_ann = pool2.submit(_safe, _search_gu_announce)
+                f_gu_gaz = pool2.submit(_safe, _search_gu_gazette)
+                f_gu_plan = pool2.submit(_safe, _search_gu_planning)
+
+            seoul_notice_results = f_seoul.result() or []
+            gu_ann = f_gu_ann.result() or []
+            gu_gaz = f_gu_gaz.result() or []
+            gu_plan = f_gu_plan.result() or []
+            gu_results = gu_ann + gu_gaz + gu_plan
+
+            total_ext = len(seoul_notice_results) + len(gu_results)
+            if total_ext:
+                logger.info(f"외부 소스 검색: 서울시 {len(seoul_notice_results)}건, "
+                           f"구청 {len(gu_ann)}+{len(gu_gaz)}+{len(gu_plan)}건")
+
         # 폴백 계층: 구체적 구역명 → 동 이름 → 자치구명
         emd_nm = addr_info.get("emdNm", "")
         emd_zone_names = [emd_nm] if emd_nm and emd_nm not in seen else []
-        district = addr_info.get("sggNm", "")
+        if not district:
+            district = addr_info.get("sggNm", "")
         fallback_zone_names = [district] if district else []
 
         announcements = get_announcements_for_zones(
@@ -429,6 +517,13 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
             announcements = get_announcements_for_zones(
                 fallback_zone_names, conn, settings.seoul_api_key, settings.lookback_days
             )
+        # 외부 소스 실시간 검색 결과 병합 (DB 중복 제외)
+        existing_titles = {a.get("title", "") for a in announcements}
+        for ext in seoul_notice_results + gu_results:
+            if ext.get("title") and ext["title"] not in existing_titles:
+                existing_titles.add(ext["title"])
+                announcements.append(ext)
+
         # 최신순 정렬 + 상위 15건
         announcements.sort(key=lambda a: a.get("published_at", ""), reverse=True)
         announcements = announcements[:15]
@@ -455,24 +550,46 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
                 if n and len(n) > 4:
                     primary_zone = n
                     break
+
+            # 외부 소스에서 최적 본문 + PDF URL 수집
+            best_body = ""
+            best_title = ""
+            all_pdf_urls = []
+            for ext in seoul_notice_results + gu_results:
+                # PDF URL 수집
+                for u in (ext.get("pdf_urls") or []):
+                    if u and u not in all_pdf_urls:
+                        all_pdf_urls.append(u)
+                # 가장 상세한 본문 채택
+                if not best_body and ext.get("content_quality") == "detailed" and ext.get("body"):
+                    best_body = ext["body"][:10000]
+                    best_title = ext.get("title", "")
+
             # 분석 대상 고시 찾기
             for ann in result["announcements"]:
                 cat = ann.get("category", "")
                 if "고시" not in cat and "결정" not in (ann.get("title", "")):
                     continue
-                cn = ann.get("raw_content") or ann.get("cn_content") or ""
+                cn = ann.get("raw_content") or ann.get("cn_content") or ann.get("body") or ""
                 gazette_ref = cn if cn else ann.get("title", "")
+                # 개별 고시의 PDF도 수집
+                for u in (ann.get("pdf_urls") or []):
+                    if u and u not in all_pdf_urls:
+                        all_pdf_urls.append(u)
                 if gazette_ref and primary_zone:
                     upis_ct = ""
                     if isinstance(upis_data, dict):
                         ntfc = upis_data.get("notification") or {}
                         upis_ct = ntfc.get("content", "") if isinstance(ntfc, dict) else ""
+                    ann_cn = best_body or cn[:10000]
                     result["_ai_pending"] = {
                         "zone_name": primary_zone,
                         "gazette_ref": gazette_ref[:500],
-                        "ann_title": ann.get("title", ""),
-                        "ann_cn": cn[:3000],
-                        "upis_content": upis_ct[:3000],
+                        "ann_title": best_title or ann.get("title", ""),
+                        "ann_cn": ann_cn,
+                        "upis_content": upis_ct[:10000],
+                        "content_quality": "detailed" if best_body else ann.get("content_quality", "summary"),
+                        "pdf_urls": all_pdf_urls[:5],
                     }
                     break
 

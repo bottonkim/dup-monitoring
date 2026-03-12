@@ -559,7 +559,7 @@
           </div>
           <div class="ai-spinner-wrap">
             <div class="ai-spinner"></div>
-            <span>시보 PDF를 분석하고 있습니다. 잠시만 기다려주세요...</span>
+            <span>고시공고를 분석하고 있습니다. 잠시만 기다려주세요...</span>
           </div>
         </div>
         <script>
@@ -573,7 +573,9 @@
               gazette_ref: pending.gazette_ref,
               ann_title: pending.ann_title,
               ann_cn: pending.ann_cn,
-              upis_content: pending.upis_content || ''
+              upis_content: pending.upis_content || '',
+              content_quality: pending.content_quality || 'summary',
+              pdf_urls: pending.pdf_urls || []
             })
           })
             .then(function(r) { return r.json(); })
