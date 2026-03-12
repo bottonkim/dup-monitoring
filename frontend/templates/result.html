@@ -360,7 +360,7 @@
             {% endfor %}
           </tbody>
         </table>
-        <p class="history-note">* 전월 기준 자료가 매월 초(10일 이내) 업데이트됩니다.</p>
+        <p class="history-note">* 전월 기준 자료가 매월 초(10일 이내) 업데이트됩니다. 최신 고시는 아래 <a href="#latest-announcements">최신 고시공고</a> 섹션을 확인하세요.</p>
         {% endif %}
 
         {# 도면 문서 목록 #}
@@ -391,7 +391,7 @@
       {% endif %}
 
       <!-- ④ 최신 고시공고 + AI 분석 -->
-      <section class="result-section">
+      <section class="result-section" id="latest-announcements">
         <h3 class="section-title">최신 고시공고</h3>
         {% if announcements %}
 
