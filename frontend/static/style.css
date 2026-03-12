@@ -613,6 +613,22 @@ a:hover { text-decoration: underline; }
 }
 .use-allowed { background: #f0fdf4; border-left: 3px solid #22c55e; }
 .use-prohibited { background: #fef2f2; border-left: 3px solid #ef4444; }
+.ai-detail-box {
+  background: #f8fafc;
+  border-left: 3px solid #94a3b8;
+  padding: 8px 12px;
+  border-radius: 0 4px 4px 0;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: #334155;
+}
+.ai-detail-box strong { display: block; margin-bottom: 4px; color: #1e293b; }
+.ai-detail-box ul { padding-left: 18px; margin-top: 4px; }
+.ai-detail-box li { margin-bottom: 2px; }
+.ai-incentive-box { border-left-color: #22c55e; background: #f0fdf4; }
+.ai-incentive-box strong { color: #166534; }
+.ai-restrict-box { border-left-color: #ef4444; background: #fef2f2; }
+.ai-restrict-box strong { color: #991b1b; }
 .ai-meta {
   font-size: 11px;
   color: #94a3b8;

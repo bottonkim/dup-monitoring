@@ -446,17 +446,36 @@
               <p class="ai-summary-text">{{ ext.summary_korean }}</p>
               {% endif %}
 
-              {# 건축 제한 수치 그리드 #}
-              {% if ext.building_coverage_ratio or ext.floor_area_ratio or ext.max_height_meters or ext.max_floors %}
+              {# ① 건폐율 / 용적률 / 높이 수치 그리드 #}
+              {% set has_nums = ext.building_coverage_ratio or ext.base_floor_area_ratio or ext.allowed_floor_area_ratio or ext.max_floor_area_ratio or ext.floor_area_ratio or ext.max_height_meters or ext.max_floors %}
+              {% if has_nums %}
               <div class="restriction-grid">
                 {% if ext.building_coverage_ratio %}<div class="r-cell"><span class="r-label">건폐율</span><span class="r-value">{{ ext.building_coverage_ratio }}</span></div>{% endif %}
-                {% if ext.floor_area_ratio %}<div class="r-cell"><span class="r-label">용적률</span><span class="r-value">{{ ext.floor_area_ratio }}</span></div>{% endif %}
+                {% if ext.base_floor_area_ratio %}<div class="r-cell"><span class="r-label">기준용적률</span><span class="r-value">{{ ext.base_floor_area_ratio }}</span></div>{% endif %}
+                {% if ext.allowed_floor_area_ratio %}<div class="r-cell"><span class="r-label">허용용적률</span><span class="r-value">{{ ext.allowed_floor_area_ratio }}</span></div>{% endif %}
+                {% if ext.max_floor_area_ratio %}<div class="r-cell"><span class="r-label">상한용적률</span><span class="r-value">{{ ext.max_floor_area_ratio }}</span></div>{% endif %}
+                {% if ext.floor_area_ratio and not ext.base_floor_area_ratio %}<div class="r-cell"><span class="r-label">용적률</span><span class="r-value">{{ ext.floor_area_ratio }}</span></div>{% endif %}
                 {% if ext.max_height_meters %}<div class="r-cell"><span class="r-label">최고높이</span><span class="r-value">{{ ext.max_height_meters }}m</span></div>{% endif %}
                 {% if ext.max_floors %}<div class="r-cell"><span class="r-label">최고층수</span><span class="r-value">{{ ext.max_floors }}층</span></div>{% endif %}
               </div>
               {% endif %}
 
-              {# 허용/불허 용도 #}
+              {# ② 높이 상세 #}
+              {% if ext.height_restrictions_detail %}
+              <div class="ai-detail-box">
+                <strong>높이제한 상세:</strong> {{ ext.height_restrictions_detail }}
+              </div>
+              {% endif %}
+
+              {# ③ 용적률 완화 조건 #}
+              {% if ext.far_incentive_conditions %}
+              <div class="ai-detail-box ai-incentive-box">
+                <strong>용적률 완화 조건:</strong>
+                <ul>{% for c in ext.far_incentive_conditions %}<li>{{ c }}</li>{% endfor %}</ul>
+              </div>
+              {% endif %}
+
+              {# ④ 허용/불허 용도 #}
               {% if ext.allowed_uses or ext.prohibited_uses %}
               <div class="use-restrictions">
                 {% if ext.allowed_uses %}
@@ -472,11 +491,41 @@
               </div>
               {% endif %}
 
-              {# 주요 변경사항 #}
+              {# ⑤ 용도별 비율 #}
+              {% if ext.use_ratios %}
+              <div class="ai-detail-box">
+                <strong>용도별 비율:</strong>
+                <ul>{% for r in ext.use_ratios %}<li>{{ r }}</li>{% endfor %}</ul>
+              </div>
+              {% endif %}
+
+              {# ⑥ 건축/개발 제한사항 #}
+              {% if ext.development_restrictions or ext.construction_restrictions %}
+              <div class="ai-detail-box ai-restrict-box">
+                {% if ext.construction_restrictions %}
+                <strong>건축 제한:</strong>
+                <ul>{% for r in ext.construction_restrictions %}<li>{{ r }}</li>{% endfor %}</ul>
+                {% endif %}
+                {% if ext.development_restrictions %}
+                <strong>개발 제한:</strong>
+                <ul>{% for r in ext.development_restrictions %}<li>{{ r }}</li>{% endfor %}</ul>
+                {% endif %}
+              </div>
+              {% endif %}
+
+              {# ⑦ 주요 변경사항 #}
               {% if ext.key_changes %}
               <div class="changes-box">
                 <strong>주요 변경:</strong>
                 <ul>{% for c in ext.key_changes %}<li>{{ c }}</li>{% endfor %}</ul>
+              </div>
+              {% endif %}
+
+              {# ⑧ 기타사항 #}
+              {% if ext.other_notes %}
+              <div class="ai-detail-box">
+                <strong>기타사항:</strong>
+                <ul>{% for n in ext.other_notes %}<li>{{ n }}</li>{% endfor %}</ul>
               </div>
               {% endif %}
 
@@ -520,18 +569,40 @@
               }
               var html = '<div class="ai-header"><span class="ai-badge">AI 분석</span><span class="ai-source">' + (data.zone_name || pending.ann_title).substring(0, 60) + '</span></div>';
               if (data.summary_korean) html += '<p class="ai-summary-text">' + data.summary_korean + '</p>';
-              var hasNums = data.building_coverage_ratio || data.floor_area_ratio || data.max_height_meters || data.max_floors;
+              // ① 건폐율/용적률/높이 그리드
+              var hasNums = data.building_coverage_ratio || data.base_floor_area_ratio || data.allowed_floor_area_ratio || data.max_floor_area_ratio || data.floor_area_ratio || data.max_height_meters || data.max_floors;
               if (hasNums) {
                 html += '<div class="restriction-grid">';
                 if (data.building_coverage_ratio) html += '<div class="r-cell"><span class="r-label">건폐율</span><span class="r-value">' + data.building_coverage_ratio + '</span></div>';
-                if (data.floor_area_ratio) html += '<div class="r-cell"><span class="r-label">용적률</span><span class="r-value">' + data.floor_area_ratio + '</span></div>';
+                if (data.base_floor_area_ratio) html += '<div class="r-cell"><span class="r-label">기준용적률</span><span class="r-value">' + data.base_floor_area_ratio + '</span></div>';
+                if (data.allowed_floor_area_ratio) html += '<div class="r-cell"><span class="r-label">허용용적률</span><span class="r-value">' + data.allowed_floor_area_ratio + '</span></div>';
+                if (data.max_floor_area_ratio) html += '<div class="r-cell"><span class="r-label">상한용적률</span><span class="r-value">' + data.max_floor_area_ratio + '</span></div>';
+                if (data.floor_area_ratio && !data.base_floor_area_ratio) html += '<div class="r-cell"><span class="r-label">용적률</span><span class="r-value">' + data.floor_area_ratio + '</span></div>';
                 if (data.max_height_meters) html += '<div class="r-cell"><span class="r-label">최고높이</span><span class="r-value">' + data.max_height_meters + 'm</span></div>';
                 if (data.max_floors) html += '<div class="r-cell"><span class="r-label">최고층수</span><span class="r-value">' + data.max_floors + '층</span></div>';
                 html += '</div>';
               }
+              // ② 높이 상세
+              if (data.height_restrictions_detail) html += '<div class="ai-detail-box"><strong>높이제한 상세:</strong> ' + data.height_restrictions_detail + '</div>';
+              // ③ 용적률 완화 조건
+              if (data.far_incentive_conditions && data.far_incentive_conditions.length) html += '<div class="ai-detail-box ai-incentive-box"><strong>용적률 완화 조건:</strong><ul>' + data.far_incentive_conditions.map(function(c){return '<li>'+c+'</li>';}).join('') + '</ul></div>';
+              // ④ 허용/불허 용도
               if (data.allowed_uses && data.allowed_uses.length) html += '<div class="use-restrictions"><div class="use-box use-allowed"><strong>허용 용도:</strong> ' + data.allowed_uses.join(', ') + '</div></div>';
               if (data.prohibited_uses && data.prohibited_uses.length) html += '<div class="use-restrictions"><div class="use-box use-prohibited"><strong>불허 용도:</strong> ' + data.prohibited_uses.join(', ') + '</div></div>';
+              // ⑤ 용도별 비율
+              if (data.use_ratios && data.use_ratios.length) html += '<div class="ai-detail-box"><strong>용도별 비율:</strong><ul>' + data.use_ratios.map(function(r){return '<li>'+r+'</li>';}).join('') + '</ul></div>';
+              // ⑥ 건축/개발 제한
+              var hasRestrict = (data.construction_restrictions && data.construction_restrictions.length) || (data.development_restrictions && data.development_restrictions.length);
+              if (hasRestrict) {
+                html += '<div class="ai-detail-box ai-restrict-box">';
+                if (data.construction_restrictions && data.construction_restrictions.length) html += '<strong>건축 제한:</strong><ul>' + data.construction_restrictions.map(function(r){return '<li>'+r+'</li>';}).join('') + '</ul>';
+                if (data.development_restrictions && data.development_restrictions.length) html += '<strong>개발 제한:</strong><ul>' + data.development_restrictions.map(function(r){return '<li>'+r+'</li>';}).join('') + '</ul>';
+                html += '</div>';
+              }
+              // ⑦ 주요 변경
               if (data.key_changes && data.key_changes.length) html += '<div class="changes-box"><strong>주요 변경:</strong><ul>' + data.key_changes.map(function(c){return '<li>'+c+'</li>';}).join('') + '</ul></div>';
+              // ⑧ 기타사항
+              if (data.other_notes && data.other_notes.length) html += '<div class="ai-detail-box"><strong>기타사항:</strong><ul>' + data.other_notes.map(function(n){return '<li>'+n+'</li>';}).join('') + '</ul></div>';
               if (data.gazette_number) html += '<div class="ai-meta">고시번호: ' + data.gazette_number + (data.announcement_date ? ' (' + data.announcement_date + ')' : '') + '</div>';
               el.className = 'ai-restriction-summary';
               el.innerHTML = html;
