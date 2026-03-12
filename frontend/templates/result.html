@@ -82,28 +82,22 @@
         var bar = document.getElementById('progressBar');
         var status = document.getElementById('loadingStatus');
         var stages = [
-          {pct: 15, text: '주소 변환 중...', delay: 800},
-          {pct: 35, text: '도시계획 구역 조회 중...', delay: 2000},
-          {pct: 55, text: '필지 정보 수집 중...', delay: 3500},
-          {pct: 70, text: '토지이음 조회 중...', delay: 5000},
-          {pct: 85, text: '고시공고 검색 중...', delay: 7000},
-          {pct: 93, text: '결과 정리 중...', delay: 10000}
+          {pct: 15, text: '주소 변환 중...', delay: 600},
+          {pct: 30, text: '도시계획 구역 조회 중...', delay: 2000},
+          {pct: 50, text: '필지 정보 수집 중...', delay: 4000},
+          {pct: 65, text: '토지이음 조회 중...', delay: 6500},
+          {pct: 78, text: '고시공고 검색 중...', delay: 9000},
+          {pct: 88, text: '결과 정리 중...', delay: 12000},
+          {pct: 94, text: '거의 완료...', delay: 16000}
         ];
         form.addEventListener('submit', function(e) {
           var addr = input.value.trim();
-          if (!addr) return;
-          e.preventDefault();
+          if (!addr) { e.preventDefault(); return; }
           overlay.classList.add('active');
-          bar.style.width = '0%';
+          bar.style.width = '5%';
           stages.forEach(function(s) {
             setTimeout(function() { bar.style.width = s.pct + '%'; status.textContent = s.text; }, s.delay);
           });
-          // 100% 채운 후 제출
-          setTimeout(function() {
-            bar.style.width = '100%';
-            status.textContent = '완료!';
-            setTimeout(function() { form.submit(); }, 400);
-          }, 12000);
         });
       })();
       </script>

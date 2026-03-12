@@ -240,9 +240,17 @@ def analyze_announcement_with_claude(
     except ImportError:
         return {"error": "anthropic 미설치"}
 
-    system = """당신은 서울시 도시계획 공문서 분석가입니다.
-결정고시/열람공고/지정고시 등의 내용에서 핵심 정보를 JSON으로 추출합니다.
-반드시 순수 JSON만 응답하세요 (마크다운 코드블록 없이)."""
+    system = """당신은 서울시 도시계획 문서를 전문으로 분석하는 한국어 도시계획 문서 분석가입니다.
+지구단위계획, 정비구역, 특별계획구역 등 서울시 공식 고시·공문서에서 핵심 정보를 정확하게 추출합니다.
+
+규칙:
+1. 반드시 JSON 형식으로만 응답 (마크다운 코드블록 없이 순수 JSON)
+2. 문서에 없는 정보는 null로 처리, 절대 추측하지 않음
+3. 숫자와 날짜는 정확하게 추출
+4. 한국어 원문 그대로 사용 (번역 불필요)
+5. 용적률은 기준/허용/상한 세 가지를 구분하여 추출
+6. 용도별 비율(주거, 상업, 업무 등)이 명시된 경우 반드시 추출
+7. 용적률 완화 조건(공개공지, 친환경 인증, 공공기여 등)이 있으면 반드시 추출"""
 
     prompt = f"""다음 서울시 도시계획 고시/공고의 제목과 내용에서 정보를 추출하세요.
 
@@ -251,24 +259,45 @@ def analyze_announcement_with_claude(
 내용:
 {cn_content}
 
-아래 JSON 스키마로 추출하세요. 내용에 없는 항목은 null로 하세요:
+아래 JSON 스키마에 따라 정보를 **빠짐없이** 추출하세요.
+각 항목은 문서에서 찾을 수 있는 한 반드시 채워야 합니다:
 {{
-  "zone_name": "구역명",
-  "zone_type": "지구단위계획구역 | 정비구역 | 특별계획구역 | 기타",
+  "zone_name": "구역명 (예: 강남구 삼성동 제1종지구단위계획구역)",
+  "zone_type": "지구단위계획구역 | 정비구역 | 특별계획구역 | 재정비촉진지구 | 기타",
   "action_type": "결정 | 변경 | 지정 | 해제 | 열람 | 기타",
-  "district": "자치구",
-  "gazette_number": "고시번호",
-  "announcement_date": "고시일 (YYYY-MM-DD)",
-  "building_coverage_ratio": "건폐율",
-  "floor_area_ratio": "용적률",
+  "district": "해당 자치구 (예: 강남구)",
+  "gazette_number": "고시번호 (예: 제2025-12호)",
+  "announcement_date": "결정/고시일 (YYYY-MM-DD)",
+  "effective_date": "효력발생일 (YYYY-MM-DD)",
+
+  "building_coverage_ratio": "건폐율 (예: 60% 이하)",
+
+  "base_floor_area_ratio": "기준용적률 (예: 200%)",
+  "allowed_floor_area_ratio": "허용용적률 (예: 250%)",
+  "max_floor_area_ratio": "상한용적률 (예: 300%)",
+  "floor_area_ratio": "용적률 (기준/허용/상한 구분 없이 단일 값만 있는 경우)",
+  "far_incentive_conditions": ["용적률 완화 조건 목록 (예: 공개공지 확보 시 +20%)"],
+
   "max_height_meters": null,
   "max_floors": null,
-  "allowed_uses": [],
-  "prohibited_uses": [],
-  "key_changes": ["주요 변경사항"],
-  "summary_korean": "100자 이내 핵심 요약",
+  "height_restrictions_detail": "높이 관련 상세 설명 (예: 가로변 20m 이하, 이면부 35m 이하 등)",
+
+  "allowed_uses": ["허용 용도 목록"],
+  "prohibited_uses": ["불허 용도 목록"],
+  "use_ratios": ["용도별 비율 (예: 주거 60% 이상, 비주거 40% 이하 등)"],
+
+  "development_restrictions": ["개발 관련 제한 사항 목록"],
+  "construction_restrictions": ["건축 관련 제한 사항 목록"],
+  "setback_requirements": "이격거리/건축선 설명 또는 null",
+
+  "other_notes": ["위 항목에 해당하지 않는 기타 주요 사항 (조경, 주차, 공공시설 기부채납 등)"],
+  "key_changes": ["이전 대비 주요 변경사항 (변경고시인 경우)"],
+
+  "summary_korean": "300자 이내 핵심 요약 (건폐율, 용적률, 높이, 주요 용도제한 포함)",
   "confidence": "high | medium | low"
-}}"""
+}}
+
+순수 JSON만 반환하세요."""
 
     try:
         client = anthropic.Anthropic(api_key=api_key)
