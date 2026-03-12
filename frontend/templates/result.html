@@ -334,7 +334,11 @@
           <div class="upis-notice-header">
             <span class="badge badge-결정고시">최신 고시</span>
             <span class="ann-date">{{ upis_notification.notice_date }}</span>
+            {% if upis_notification.notice_code %}
+            <a href="https://urban.seoul.go.kr/view/html/PMNU4030100001?noticeCode={{ upis_notification.notice_code }}" target="_blank" rel="noopener" class="ann-gazette-link">서울특별시 고시 제{{ upis_notification.notice_no }}호 →</a>
+            {% else %}
             <span class="ann-gazette">서울특별시 고시 제{{ upis_notification.notice_no }}호</span>
+            {% endif %}
           </div>
           <p class="upis-notice-title">{{ upis_notification.title }}</p>
           {% if upis_notification.site %}
@@ -361,7 +365,13 @@
             {% for h in gazette_history %}
             <tr{% if loop.first %} class="history-row-latest"{% endif %}>
               <td class="history-date">{{ h.date }}</td>
-              <td>서울특별시 고시 제{{ h.no }}호</td>
+              <td>
+                {% if h.notice_code %}
+                <a href="https://urban.seoul.go.kr/view/html/PMNU4030100001?noticeCode={{ h.notice_code }}" target="_blank" rel="noopener" class="history-link">서울특별시 고시 제{{ h.no }}호 →</a>
+                {% else %}
+                서울특별시 고시 제{{ h.no }}호
+                {% endif %}
+              </td>
               <td>{{ h.desc or '-' }}</td>
             </tr>
             {% endfor %}
@@ -375,15 +385,31 @@
         {# 도면 문서 목록 #}
         {% if drawing_documents %}
         <div class="drawing-docs">
-          <h4 class="drawing-docs-title">첨부 도면</h4>
-          <ul class="drawing-list">
-            {% for doc in drawing_documents %}
-            <li class="drawing-item">
-              <span class="drawing-icon">&#128196;</span>
-              <span class="drawing-name">{{ doc.name }}</span>
-            </li>
-            {% endfor %}
-          </ul>
+          <h4 class="drawing-docs-title">첨부 도면 ({{ drawing_documents|length }}건)</h4>
+          <table class="drawing-table">
+            <thead>
+              <tr>
+                <th class="drawing-col-no">#</th>
+                <th>파일명</th>
+                <th class="drawing-col-action">보기</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for doc in drawing_documents %}
+              <tr>
+                <td class="drawing-col-no">{{ loop.index }}</td>
+                <td class="drawing-file-name">{{ doc.name }}</td>
+                <td class="drawing-col-action">
+                  {% if doc.download_url %}
+                  <a href="{{ doc.download_url }}" target="_blank" rel="noopener" class="btn-drawing-view">열기</a>
+                  {% else %}
+                  <span class="drawing-no-link">-</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
         </div>
         {% endif %}
 

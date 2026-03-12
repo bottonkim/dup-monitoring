@@ -438,13 +438,23 @@ def _get_zone_details_full(
             drawing_docs = []
             for drw in tn_ntfc.get("tnDrwImage", []):
                 if isinstance(drw, dict) and drw.get("dImageName"):
+                    d_path = drw.get("dImagePath", "")
+                    d_name = drw["dImageName"]
+                    # 다운로드 URL: https://urban.seoul.go.kr/{dImagePath}/{dImageName}
+                    dl_url = ""
+                    if d_path and d_name:
+                        encoded_name = quote(d_name, safe="")
+                        dl_url = f"{_BASE_URL}/{d_path}/{encoded_name}"
                     drawing_docs.append({
-                        "name": drw["dImageName"],
+                        "name": d_name,
                         "code": drw.get("dImageCode", ""),
+                        "download_url": dl_url,
                     })
 
             # 연혁 파싱: content에서 고시번호+날짜 추출
-            gazette_history = _parse_gazette_history(content, notice_no, notice_date)
+            gazette_history = _parse_gazette_history(
+                content, notice_no, notice_date, notice_code
+            )
 
             ntfc_data = {
                 "notice_no": notice_no,
@@ -462,7 +472,8 @@ def _get_zone_details_full(
 
 
 def _parse_gazette_history(
-    content: str, current_no: str, current_date: str
+    content: str, current_no: str, current_date: str,
+    current_notice_code: str = "",
 ) -> list[dict]:
     """
     tnNtfc.content 텍스트에서 고시번호와 날짜를 파싱하여 연혁 목록 생성.
@@ -498,7 +509,9 @@ def _parse_gazette_history(
                     desc = kw
                     break
 
-        history.append({"no": no, "date": date, "desc": desc})
+        # 현재 고시번호와 일치하면 notice_code 연결
+        nc = current_notice_code if no == current_no else ""
+        history.append({"no": no, "date": date, "desc": desc, "notice_code": nc})
 
     # 현재 고시가 content에 없으면 맨 앞에 추가
     if current_no and current_no not in seen:
@@ -506,6 +519,7 @@ def _parse_gazette_history(
             "no": current_no,
             "date": current_date,
             "desc": "결정(변경)",
+            "notice_code": current_notice_code,
         })
 
     # 날짜 역순 정렬 (최신순)
