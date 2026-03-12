@@ -157,14 +157,21 @@
           {pct: 85, text: '고시공고 검색 중...', delay: 7000},
           {pct: 93, text: '결과 정리 중...', delay: 10000}
         ];
-        form.addEventListener('submit', function() {
+        form.addEventListener('submit', function(e) {
           var addr = document.getElementById('address').value.trim();
           if (!addr) return;
+          e.preventDefault();
           overlay.classList.add('active');
           bar.style.width = '0%';
           stages.forEach(function(s) {
             setTimeout(function() { bar.style.width = s.pct + '%'; status.textContent = s.text; }, s.delay);
           });
+          // 100% 채운 후 제출
+          setTimeout(function() {
+            bar.style.width = '100%';
+            status.textContent = '완료!';
+            setTimeout(function() { form.submit(); }, 400);
+          }, 12000);
         });
       })();
       </script>
