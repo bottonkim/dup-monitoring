@@ -300,7 +300,14 @@
                 {{ pdf_name }}
                 {% endif %}
                 {% if h.drawing_documents is defined and h.drawing_documents %}
-                <span class="history-drw-badge" title="확인도면 {{ h.drawing_documents|length }}건">📄{{ h.drawing_documents|length }}</span>
+                <span class="history-drw-badge drw-toggle" title="확인도면 {{ h.drawing_documents|length }}건 (클릭하여 보기)" onclick="this.nextElementSibling.hidden=!this.nextElementSibling.hidden" style="cursor:pointer">📄{{ h.drawing_documents|length }}</span>
+                <div class="drawing-list history-drw-list" hidden>
+                  {% for doc in h.drawing_documents %}
+                  {% if doc.download_url %}
+                  <a href="{{ doc.download_url }}" target="_blank" rel="noopener" class="btn-drawing-sm">{{ doc.name }}</a>
+                  {% endif %}
+                  {% endfor %}
+                </div>
                 {% endif %}
               </div>
             </div>
