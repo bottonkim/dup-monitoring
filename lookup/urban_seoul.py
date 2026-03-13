@@ -602,9 +602,9 @@ def _parse_gazette_history(
                 rest = raw_desc[label_match.end():].strip()
                 rest = re.sub(r"^[,.\s]+", "", rest)
                 if rest:
-                    desc_detail = rest[:200]
+                    desc_detail = rest[:100] + ("…" if len(rest) > 100 else "")
             else:
-                desc_detail = raw_desc[:200]
+                desc_detail = raw_desc[:100] + ("…" if len(raw_desc) > 100 else "")
 
         if not desc:
             after_short = content[m.end():m.end() + 30]
@@ -763,10 +763,11 @@ def _enrich_history_from_ntfc_api(
             desc = "결정"
 
         # desc_detail: content(서술형 설명) 우선, 없으면 title 폴백
+        _MAX = 100
         if content and len(content) > 10:
-            desc_detail = content[:300]
+            desc_detail = content[:_MAX] + ("…" if len(content) > _MAX else "")
         else:
-            desc_detail = title[:200] if len(title) > len(desc) + 5 else ""
+            desc_detail = title[:_MAX] + ("…" if len(title) > _MAX else "") if len(title) > len(desc) + 5 else ""
 
         source_prefix = "서울특별시고시"
         if "구" in str(item.get("deptCode", "")):
