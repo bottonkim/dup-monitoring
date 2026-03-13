@@ -715,8 +715,14 @@ def _enrich_history_from_ntfc_api(
                 continue
 
             title = item.get("title", "")
-            # 지구단위계획 관련만 필터 (구역명 또는 지구단위 키워드 포함)
-            if not any(k in title for k in [kw_full, "지구단위"]):
+            # 구역명이 제목에 포함된 것만 (정확 매칭 우선)
+            # kw_full: "왕십리 광역중심", kw: "왕십리"
+            title_has_zone = kw_full in title
+            # 구역명 변경 전 이름도 매칭 (예: "부도심" → "광역중심")
+            if not title_has_zone:
+                # 구역 고유명사 + "지구단위" 포함 시 매칭
+                title_has_zone = kw in title and "지구단위" in title
+            if not title_has_zone:
                 continue
 
             notice_date_raw = item.get("noticeDate", "")
