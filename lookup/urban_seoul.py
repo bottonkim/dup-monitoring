@@ -813,12 +813,16 @@ def _enrich_history_from_ntfc_api(
                         added.append(_make_entry(item))
 
         # ── Phase 3: 일괄 변경 건 (전체 지구단위계획구역 대상) ──
-        # "지구단위계획구역" 키워드로 검색 → "등 N개" 패턴 필터
-        bulk_items = _search_ntfc_list(["지구단위계획구역"], page_size=100)
+        # 2개 키워드로 검색하여 누락 방지
+        bulk_items = []
+        for bulk_kw in ["지구단위계획구역", "지구단위계획 결정"]:
+            bulk_items.extend(_search_ntfc_list([bulk_kw], page_size=100))
+        seen_bulk = set()
         for item in bulk_items:
             notice_no = item.get("noticeNo", "")
-            if not notice_no or notice_no in existing_nos:
+            if not notice_no or notice_no in existing_nos or notice_no in seen_bulk:
                 continue
+            seen_bulk.add(notice_no)
             title = item.get("title", "")
             content = item.get("content", "")
             # 제목 또는 content에 "등 N개 지구단위" 패턴이 있으면 일괄 변경
