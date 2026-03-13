@@ -670,17 +670,21 @@ def _enrich_history_from_ntfc_api(
 
     existing_nos = {h.get("no", "") for h in existing_history}
 
-    # 구역명에서 핵심 키워드 추출 (예: "왕십리 광역중심 지구단위계획구역" → "왕십리 광역중심")
-    kw = zone_name
+    # 구역명에서 검색 키워드 추출
+    # "왕십리 광역중심 지구단위계획구역" → 고유명사 "왕십리"
+    kw_full = zone_name
     for suffix in ["지구단위계획구역", "지구단위계획", "구역"]:
-        kw = kw.replace(suffix, "").strip()
+        kw_full = kw_full.replace(suffix, "").strip()
+    # 첫 번째 단어 = 지역 고유명사 (더 넓은 검색)
+    kw_parts = kw_full.split()
+    kw = kw_parts[0] if kw_parts else kw_full
     if not kw or len(kw) < 2:
         return existing_history
 
     try:
         search_payload = json.dumps({
             "pageNo": 1,
-            "pageSize": 30,
+            "pageSize": 50,
             "keywordList": [kw],
             "pubSiteCode": "",
             "organCode": "",
@@ -711,8 +715,8 @@ def _enrich_history_from_ntfc_api(
                 continue
 
             title = item.get("title", "")
-            # 지구단위계획 관련만 (정비구역, 역세권 등 연관 고시도 포함)
-            if not any(kw_part in title for kw_part in [kw, "지구단위", "용적률", "조례"]):
+            # 지구단위계획 관련만 필터 (구역명 또는 지구단위 키워드 포함)
+            if not any(k in title for k in [kw_full, "지구단위"]):
                 continue
 
             notice_date_raw = item.get("noticeDate", "")
