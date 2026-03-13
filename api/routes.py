@@ -21,6 +21,9 @@ _TEMPLATES_DIR = Path(__file__).parent.parent / "frontend" / "templates"
 _STATIC_DIR = Path(__file__).parent.parent / "frontend" / "static"
 
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+# CSS 캐시 버스터: style.css 수정 시각을 쿼리 파라미터로 사용
+_css_mtime = int((_STATIC_DIR / "style.css").stat().st_mtime)
+templates.env.globals["css_v"] = _css_mtime
 
 
 def create_app(settings, db_path: Path) -> FastAPI:

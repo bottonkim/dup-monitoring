@@ -115,8 +115,26 @@ nowon_bbs, dobong_asp, eminwon_sub, sdm_bbs, yangcheon_bbs, junggu_cms.
 
 - `fetch_zone_data()`: PNU → 구역명 + 최신 고시 + 연혁 + 도면
 - `_parse_gazette_history()`: tnNtfc.content에서 고시번호+날짜 파싱
+- `_enrich_history_from_ntfc_api()`: getNtfcList.json API로 연혁 보강 (4단계)
 - 도면 다운로드 URL: `https://urban.seoul.go.kr/{dImagePath}/{dImageName}`
 - 고시 원문 URL: `https://urban.seoul.go.kr/view/html/PMNU4030100001?noticeCode={noticeCode}`
+
+### 연혁 보강 4단계 (`_enrich_history_from_ntfc_api`)
+
+1. **Phase 1**: 구역명 고유명사로 getNtfcList.json 제목 검색
+2. **Phase 2**: ntfc_content에서 과거 구역명 추출 → 추가 검색
+3. **Phase 3**: 일괄 변경 건 수집 ("등 N개 지구단위계획구역" 패턴 감지)
+   - 키워드: "지구단위계획구역", "도시관리계획(지구단위"
+4. **Phase 4**: `_SUPPLEMENTARY_HISTORY` dict에서 하드코딩 보충 (UPIS 미등록 고시)
+
+필터: `_ZONE_KW = ("지구단위", "특별계획구역", "세부개발계획")` — "뉴타운" 제목은 제외
+API None 방어: `item.get("key") or ""` 패턴 사용 (값이 None일 수 있음)
+
+### `_SUPPLEMENTARY_HISTORY`
+
+UPIS API에 미등록된 고시를 하드코딩으로 보충. 구역명 키워드 → 고시 목록 dict.
+각 항목에 `archive_url` 필드로 UPIS 아카이브 PDF 직접 링크 지원.
+프론트엔드(result.html)에서 `archive_url` 있으면 해당 링크, 없으면 notice_code 기반 UPIS 링크 표시.
 
 ## 환경변수 (.env)
 

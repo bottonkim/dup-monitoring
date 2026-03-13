@@ -4,12 +4,15 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>조회 결과 - {{ address }}</title>
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/style.css?v={{ css_v }}">
 </head>
 <body>
   <div class="container">
     <header class="site-header">
-      <h1><a href="/" class="home-link">서울시 도시계획 구역 조회</a></h1>
+      <div class="header-row">
+        <a href="/" class="btn-home" title="홈으로">&#8962; 홈</a>
+        <h1><a href="/" class="home-link">서울시 도시계획 구역 조회</a></h1>
+      </div>
     </header>
 
     <main>

@@ -9,6 +9,7 @@ venv/
 dist/
 build/
 .claude/
+ssh/
 *.log
 
 # 테스트/임시 파일

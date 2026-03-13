@@ -14,9 +14,9 @@ a:hover { text-decoration: underline; }
 
 /* ===== 레이아웃 ===== */
 .container {
-  max-width: 900px;
+  max-width: 1200px;
   margin: 0 auto;
-  padding: 0 16px 40px;
+  padding: 0 24px 40px;
 }
 
 /* ===== 헤더 ===== */
@@ -24,12 +24,31 @@ a:hover { text-decoration: underline; }
   background: #003087;
   color: white;
   padding: 24px 16px;
-  margin: 0 -16px 32px;
+  margin: 0 -24px 32px;
   text-align: center;
 }
 
 .site-header h1 { font-size: 22px; font-weight: 700; }
 .site-header .subtitle { margin-top: 6px; font-size: 13px; opacity: 0.85; }
+.header-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  position: relative;
+}
+.btn-home {
+  position: absolute;
+  left: 0;
+  padding: 6px 14px;
+  background: rgba(255,255,255,0.15);
+  color: white;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.btn-home:hover { background: rgba(255,255,255,0.3); text-decoration: none; color: white; }
 .home-link { color: white; }
 .home-link:hover { text-decoration: none; opacity: 0.85; }
 
