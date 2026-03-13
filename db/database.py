@@ -27,6 +27,23 @@ def run_migrations(db_path: Path):
     """migrations/ 폴더의 SQL 파일을 순서대로 실행"""
     conn = get_connection(db_path)
     sql_files = sorted(_MIGRATIONS_DIR.glob("*.sql"))
+
+    # ALTER TABLE ADD COLUMN은 IF NOT EXISTS 미지원 → 수동 체크
+    existing_columns = {}
+    for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall():
+        table = row["name"]
+        cols = [c["name"] for c in conn.execute(f"PRAGMA table_info({table})").fetchall()]
+        existing_columns[table] = set(cols)
+
+    # announcements.content_quality 컬럼 없으면 추가
+    if "content_quality" not in existing_columns.get("announcements", set()):
+        try:
+            conn.execute("ALTER TABLE announcements ADD COLUMN content_quality TEXT DEFAULT 'summary'")
+            conn.commit()
+            logger.info("content_quality 컬럼 추가 완료")
+        except Exception:
+            pass  # 이미 존재
+
     for sql_file in sql_files:
         logger.debug(f"마이그레이션 적용: {sql_file.name}")
         conn.executescript(sql_file.read_text(encoding="utf-8"))
