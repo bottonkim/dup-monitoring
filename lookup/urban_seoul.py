@@ -416,13 +416,19 @@ def fetch_zone_data(pnu: str, timeout: int = 20) -> dict:
             result["drawing_documents"] = history_source.get("drawing_documents", [])
 
         # 사업정보 파일 목록 보강 (getPropelList — 각 고시별 전체 첨부파일)
+        # all_notifications 내 dstplanWtnnc의 gazette_history에 매핑
         dstplan_wt = None
         for z in zones:
             if z.get("zone_type") in ("지구단위계획구역",):
                 dstplan_wt = z.get("wtnnc_sn")
                 break
-        if dstplan_wt and result.get("gazette_history"):
-            _enrich_files_from_propel(sess, dstplan_wt, result["gazette_history"], timeout)
+        if dstplan_wt:
+            for ntfc in deduped_notifications:
+                if ntfc.get("category_key") == "dstplanWtnnc" and ntfc.get("gazette_history"):
+                    _enrich_files_from_propel(
+                        sess, dstplan_wt, ntfc["gazette_history"], timeout
+                    )
+                    break  # 하나의 dstplanWtnnc만 처리
 
         logger.debug(
             f"urban.seoul.go.kr 조회 (PNU={pnu}): "
