@@ -375,9 +375,11 @@ def fetch_zone_data(pnu: str, timeout: int = 20) -> dict:
         # 지구단위계획 연혁 보강 (getNtfcList.json 키워드 검색)
         for ntfc in deduped_notifications:
             if ntfc.get("category_key") == "dstplanWtnnc" and ntfc.get("zone_name"):
+                ntfc_content = ntfc.get("notification", {}).get("content", "")
                 ntfc["gazette_history"] = _enrich_history_from_ntfc_api(
                     sess, ntfc["zone_name"],
                     ntfc.get("gazette_history", []),
+                    ntfc_content=ntfc_content,
                     timeout=min(timeout, 15),
                 )
 
@@ -658,12 +660,16 @@ def _enrich_history_from_ntfc_api(
     sess: requests.Session,
     zone_name: str,
     existing_history: list[dict],
+    ntfc_content: str = "",
     timeout: int = 15,
 ) -> list[dict]:
     """
     UPIS getNtfcList.json으로 구역명 키워드 검색 → 기존 연혁에 없는 고시 추가.
-    getList.json content 필드에는 원본 결정 체인만 포함되므로,
-    일괄 변경(용적률 완화, 조례 개정 등)은 이 API로 보강.
+
+    3단계 보강:
+    1) 구역명 고유명사로 제목 검색 (기존)
+    2) 과거 구역명 변형으로 추가 검색 (ntfc_content에서 추출)
+    3) 일괄 변경 건 검색 ("등 N개 지구단위계획구역" 패턴)
     """
     if not zone_name:
         return existing_history
@@ -675,111 +681,152 @@ def _enrich_history_from_ntfc_api(
     kw_full = zone_name
     for suffix in ["지구단위계획구역", "지구단위계획", "구역"]:
         kw_full = kw_full.replace(suffix, "").strip()
-    # 첫 번째 단어 = 지역 고유명사 (더 넓은 검색)
     kw_parts = kw_full.split()
     kw = kw_parts[0] if kw_parts else kw_full
     if not kw or len(kw) < 2:
         return existing_history
 
+    added = []
+
+    def _search_ntfc_list(keywords: list[str], page_size: int = 50) -> list[dict]:
+        """getNtfcList.json 검색 헬퍼."""
+        try:
+            resp = sess.post(
+                _NTFC_LIST_API,
+                data=json.dumps({
+                    "pageNo": 1, "pageSize": page_size,
+                    "keywordList": keywords,
+                    "pubSiteCode": "", "organCode": "",
+                    "bgnDate": "", "endDate": "",
+                    "srchType": "title", "noticeCode": "",
+                }),
+                headers={"Content-Type": "application/json"},
+                timeout=timeout,
+            )
+            if resp.status_code != 200:
+                return []
+            data = json.loads(resp.content.decode("utf-8-sig"))
+            return data.get("content", [])
+        except Exception:
+            return []
+
+    def _make_entry(item: dict) -> dict:
+        """getNtfcList 항목 → gazette_history 엔트리 변환."""
+        notice_no = item.get("noticeNo", "")
+        title = item.get("title", "")
+        notice_date_raw = item.get("noticeDate", "")
+        notice_date = notice_date_raw[:10] if notice_date_raw else ""
+        notice_code = item.get("noticeCode", "")
+        drw_images = item.get("tnDrwImage") or []
+
+        desc = "결정(변경)"
+        if "실효" in title:
+            desc = "실효"
+        elif "결정(변경)" in title:
+            desc = "결정(변경)"
+        elif "변경" in title:
+            desc = "변경"
+        elif "결정" in title:
+            desc = "결정"
+
+        desc_detail = title[:200] if len(title) > len(desc) + 5 else ""
+
+        source_prefix = "서울특별시고시"
+        if "구" in str(item.get("deptCode", "")):
+            dept = item.get("dept", {})
+            instt = dept.get("insttFullName", "") if isinstance(dept, dict) else ""
+            if "구" in instt:
+                gu_match = re.search(r"([가-힣]+구)", instt)
+                if gu_match:
+                    source_prefix = gu_match.group(1) + "고시"
+
+        return {
+            "no": notice_no,
+            "date": notice_date,
+            "desc": desc,
+            "desc_detail": desc_detail,
+            "notice_code": notice_code,
+            "source_prefix": source_prefix,
+            "drawing_documents": [
+                {
+                    "name": d.get("dImageName", ""),
+                    "code": d.get("dImageCode", ""),
+                    "download_url": (
+                        f"{_BASE_URL}/{d.get('dImagePath', '')}/{quote(d['dImageName'], safe='')}"
+                        if d.get("dImagePath") and d.get("dImageName") else ""
+                    ),
+                }
+                for d in drw_images
+                if isinstance(d, dict) and d.get("dImageName")
+            ],
+        }
+
+    _ZONE_KW = ("지구단위", "특별계획구역", "세부개발계획")
+    _BULK_PATTERN = re.compile(r"등\s*\d+\s*개\s*(지구단위|구역)")
+
     try:
-        search_payload = json.dumps({
-            "pageNo": 1,
-            "pageSize": 50,
-            "keywordList": [kw],
-            "pubSiteCode": "",
-            "organCode": "",
-            "bgnDate": "",
-            "endDate": "",
-            "srchType": "title",
-            "noticeCode": "",
-        })
-
-        resp = sess.post(
-            _NTFC_LIST_API,
-            data=search_payload,
-            headers={"Content-Type": "application/json"},
-            timeout=timeout,
-        )
-        if resp.status_code != 200:
-            return existing_history
-
-        data = json.loads(resp.content.decode("utf-8-sig"))
-        items = data.get("content", [])
-        if not items:
-            return existing_history
-
-        added = []
+        # ── Phase 1: 구역명 고유명사로 검색 ──
+        items = _search_ntfc_list([kw])
         for item in items:
             notice_no = item.get("noticeNo", "")
             if not notice_no or notice_no in existing_nos:
                 continue
-
             title = item.get("title", "")
             title_nospace = title.replace(" ", "")
             kw_nospace = kw_full.replace(" ", "")
-            # 1) 구역명 전체 매칭 (공백 무시): "왕십리광역중심"
-            title_has_zone = kw_nospace in title_nospace
-            # 2) 구역명 변경 전 이름: "왕십리부도심" 등
-            #    고유명사 + (지구단위|특별계획구역|세부개발계획) — "뉴타운" 제외
-            if not title_has_zone:
-                _ZONE_KEYWORDS = ("지구단위", "특별계획구역", "세부개발계획")
-                if kw in title and any(zk in title for zk in _ZONE_KEYWORDS) and "뉴타운" not in title:
-                    title_has_zone = True
-            if not title_has_zone:
+            match = kw_nospace in title_nospace
+            if not match:
+                if kw in title and any(zk in title for zk in _ZONE_KW) and "뉴타운" not in title:
+                    match = True
+            if match:
+                existing_nos.add(notice_no)
+                added.append(_make_entry(item))
+
+        # ── Phase 2: 과거 구역명으로 추가 검색 ──
+        # ntfc_content에서 과거 구역명 변형 추출
+        # 예: "왕십리부도심권" → "부도심" 키워드는 이미 Phase 1에서 처리됨
+        # 여기서는 content에 언급된 다른 구역명을 추출
+        if ntfc_content:
+            # "국제빌딩주변" 같은 별도 구역명 추출
+            alt_names = set()
+            # 패턴: "OOO 지구단위계획" 또는 "OOO지구단위계획"
+            for m in re.finditer(
+                r"([\uac00-\ud7a30-9A-Za-z]+(?:\s[\uac00-\ud7a30-9A-Za-z]+)*)"
+                r"\s*(?:제?\d*종?\s*)?지구단위계획",
+                ntfc_content,
+            ):
+                name = m.group(1).strip()
+                # 짧은 접속사나 조사 제거
+                name = re.sub(r"^(및|의|에|로|을|를|이|가)\s*", "", name)
+                if len(name) >= 2 and name != kw and name != kw_full:
+                    alt_names.add(name)
+
+            for alt_kw in alt_names:
+                alt_items = _search_ntfc_list([alt_kw])
+                for item in alt_items:
+                    notice_no = item.get("noticeNo", "")
+                    if not notice_no or notice_no in existing_nos:
+                        continue
+                    title = item.get("title", "")
+                    if alt_kw in title and any(zk in title for zk in _ZONE_KW) and "뉴타운" not in title:
+                        existing_nos.add(notice_no)
+                        added.append(_make_entry(item))
+
+        # ── Phase 3: 일괄 변경 건 (전체 지구단위계획구역 대상) ──
+        # "지구단위계획구역" 키워드로 검색 → "등 N개" 패턴 필터
+        bulk_items = _search_ntfc_list(["지구단위계획구역"], page_size=100)
+        for item in bulk_items:
+            notice_no = item.get("noticeNo", "")
+            if not notice_no or notice_no in existing_nos:
                 continue
-
-            notice_date_raw = item.get("noticeDate", "")
-            notice_date = notice_date_raw[:10] if notice_date_raw else ""
-            notice_code = item.get("noticeCode", "")
-            drw_images = item.get("tnDrwImage") or []
-
-            # desc: 제목에서 핵심 내용 추출
-            desc = "결정(변경)"
-            title_clean = re.sub(r"도시관리계획\s*\[", "", title)
-            title_clean = re.sub(r"\]\s*결정.*$", "", title_clean)
-            if "결정(변경)" in title:
-                desc = "결정(변경)"
-            elif "변경" in title:
-                desc = "변경"
-            elif "결정" in title:
-                desc = "결정"
-
-            # desc_detail: 제목 전체를 상세 설명으로
-            desc_detail = title[:200] if len(title) > len(desc) + 5 else ""
-
-            # source_prefix 추출
-            source_prefix = "서울특별시고시"
-            pub_site = item.get("pubSiteCode", "")
-            if pub_site and "구" in str(item.get("deptCode", "")):
-                # 구청 고시인 경우
-                dept = item.get("dept", {})
-                instt = dept.get("insttFullName", "") if isinstance(dept, dict) else ""
-                if "구" in instt:
-                    gu_match = re.search(r"([가-힣]+구)", instt)
-                    if gu_match:
-                        source_prefix = gu_match.group(1) + "고시"
-
-            existing_nos.add(notice_no)
-            added.append({
-                "no": notice_no,
-                "date": notice_date,
-                "desc": desc,
-                "desc_detail": desc_detail,
-                "notice_code": notice_code,
-                "source_prefix": source_prefix,
-                "drawing_documents": [
-                    {
-                        "name": d.get("dImageName", ""),
-                        "code": d.get("dImageCode", ""),
-                        "download_url": (
-                            f"{_BASE_URL}/{d.get('dImagePath', '')}/{quote(d['dImageName'], safe='')}"
-                            if d.get("dImagePath") and d.get("dImageName") else ""
-                        ),
-                    }
-                    for d in drw_images
-                    if isinstance(d, dict) and d.get("dImageName")
-                ],
-            })
+            title = item.get("title", "")
+            content = item.get("content", "")
+            # 제목 또는 content에 "등 N개 지구단위" 패턴이 있으면 일괄 변경
+            if _BULK_PATTERN.search(title) or _BULK_PATTERN.search(content):
+                existing_nos.add(notice_no)
+                entry = _make_entry(item)
+                entry["bulk_change"] = True  # 일괄 변경 표시
+                added.append(entry)
 
         if added:
             logger.info(f"UPIS 연혁 보강: {zone_name} — {len(added)}건 추가 (기존 {len(existing_history)}건)")
