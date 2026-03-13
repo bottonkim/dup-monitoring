@@ -480,6 +480,20 @@ a:hover { text-decoration: underline; }
 .badge-special {
   background: #d97706;
 }
+
+/* ===== 정비구역 카드 (재개발/재건축) ===== */
+.zone-card-redevelopment {
+  border-left-color: #dc2626;
+  background: #fef2f2;
+  border-left-width: 4px;
+}
+.badge-redevelopment {
+  background: #dc2626;
+}
+.zone-note-redevelopment {
+  color: #991b1b;
+}
+.zone-note-redevelopment a { color: #dc2626; }
 .zone-note {
   margin-top: 8px;
   font-size: 13px;

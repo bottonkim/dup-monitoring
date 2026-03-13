@@ -253,9 +253,10 @@
         {% if zones %}
         <div class="zones-list">
           {% for zone in zones %}
-          <div class="zone-card {% if zone.layer != 'lt_c_uq111' %}zone-card-special{% endif %}">
+          {% set is_redevelopment = zone.layer in ('lt_c_ub011', 'lt_c_ub021') or '정비' in (zone.zone_type or '') or '재개발' in (zone.zone_type or '') or '재건축' in (zone.zone_type or '') %}
+          <div class="zone-card {% if is_redevelopment %}zone-card-redevelopment{% elif zone.layer != 'lt_c_uq111' %}zone-card-special{% endif %}">
             <div class="zone-header">
-              <span class="zone-type-badge {% if zone.layer != 'lt_c_uq111' %}badge-special{% endif %}">
+              <span class="zone-type-badge {% if is_redevelopment %}badge-redevelopment{% elif zone.layer != 'lt_c_uq111' %}badge-special{% endif %}">
                 {%- if zone.source == 'urban_seoul' and zone.zone_name -%}{{ zone.zone_name }}{%- else -%}{{ zone.zone_type }}{%- endif -%}
               </span>
               <div class="zone-meta">
@@ -300,6 +301,13 @@
             <p class="zone-detail"><strong>{{ zone.upis_name }}</strong></p>
             {% else %}
             <p class="zone-note">구체적 계획명은 <a href="{{ tojieum_url }}" target="_blank">토지이음</a> 확인</p>
+            {% endif %}
+            {% elif is_redevelopment %}
+            {% if zone.location %}
+            <p class="zone-detail zone-location">{{ zone.location }}</p>
+            {% endif %}
+            {% if zone.gazette %}
+            <p class="zone-note zone-note-redevelopment">고시: {{ zone.gazette }}</p>
             {% endif %}
             {% elif zone.source == 'urban_seoul' %}
             {% if zone.location %}
