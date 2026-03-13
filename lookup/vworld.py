@@ -112,6 +112,8 @@ def fetch_parcel_info(pnu: str, api_key: str, timeout: int = 15) -> dict:
     Returns:
         {"jimok": "대", "area": "171.6 ㎡"} or {}
     """
+    # NED API는 부가 정보 — 타임아웃을 짧게 제한 (최대 10초)
+    timeout = min(timeout, 10)
     import datetime
     current_year = datetime.date.today().year
     # juso.go.kr mtYn이 틀리는 경우 대비: 원본 + 반전값 모두 시도
@@ -120,8 +122,8 @@ def fetch_parcel_info(pnu: str, api_key: str, timeout: int = 15) -> dict:
     candidates = [pnu, pnu_alt]
 
     for try_pnu in candidates:
-        # 최신 연도부터 시도 (최대 3년 전까지)
-        for year in range(current_year, current_year - 3, -1):
+        # 최신 연도부터 시도 (최대 2년 전까지)
+        for year in range(current_year, current_year - 2, -1):
             try:
                 resp = requests.get(
                     _VWORLD_NED_URL,
