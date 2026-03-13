@@ -113,9 +113,10 @@ nowon_bbs, dobong_asp, eminwon_sub, sdm_bbs, yangcheon_bbs, junggu_cms.
 
 ## UPIS 연혁 데이터 (lookup/urban_seoul.py)
 
-- `fetch_zone_data()`: PNU → 구역명 + 최신 고시 + 연혁 + 도면
+- `fetch_zone_data()`: PNU → 구역명 + 최신 고시 + 연혁 + 도면 + 사업정보 파일
 - `_parse_gazette_history()`: tnNtfc.content에서 고시번호+날짜 파싱
 - `_enrich_history_from_ntfc_api()`: getNtfcList.json API로 연혁 보강 (4단계)
+- `_enrich_files_from_propel()`: 사업정보 API로 각 고시별 전체 첨부파일 매핑
 - 도면 다운로드 URL: `https://urban.seoul.go.kr/{dImagePath}/{dImageName}`
 - 고시 원문 URL: `https://urban.seoul.go.kr/view/html/PMNU4030100001?noticeCode={noticeCode}`
 
@@ -130,11 +131,36 @@ nowon_bbs, dobong_asp, eminwon_sub, sdm_bbs, yangcheon_bbs, junggu_cms.
 필터: `_ZONE_KW = ("지구단위", "특별계획구역", "세부개발계획")` — "뉴타운" 제목은 제외
 API None 방어: `item.get("key") or ""` 패턴 사용 (값이 None일 수 있음)
 
+### 사업정보 파일 매핑 (`_enrich_files_from_propel`)
+
+기존 `tnDrwImage`(참고자료 6건)가 아닌 UPIS 사업정보 API를 통해 전체 첨부파일을 매핑:
+
+1. `dstplan/getCUq161.json` — wtnnc_sn(recordCode) → `presentSn` 획득
+2. `dstplan/getPropelList.json` — presentSn → 고시별 `fileList` (DFL01~DFL06)
+3. 다운로드 URL: `https://urban.seoul.go.kr/{fileUrl}/{quote(fileName)}`
+
+파일 그룹코드 (`_FILE_GROUP_LABELS`):
+- DFL01: 고시문 (PDF/HWP)
+- DFL02: 결정도 (JPG, 다수)
+- DFL03: 결정조서 (PDF)
+- DFL04: 민간시행지침 (PDF)
+- DFL05: 공공시행지침 (PDF)
+- DFL06: 기타자료 (PDF)
+
+프론트엔드: 각 연혁 항목에 📄 배지 표시 + 클릭 토글로 파일 목록 펼침, `[그룹라벨] 파일명` 형식.
+
 ### `_SUPPLEMENTARY_HISTORY`
 
 UPIS API에 미등록된 고시를 하드코딩으로 보충. 구역명 키워드 → 고시 목록 dict.
 각 항목에 `archive_url` 필드로 UPIS 아카이브 PDF 직접 링크 지원.
 프론트엔드(result.html)에서 `archive_url` 있으면 해당 링크, 없으면 notice_code 기반 UPIS 링크 표시.
+
+### gazette_history 소스 선택
+
+`fetch_zone_data`에서 복수 구역(지구단위, 철도, 미집행시설 등) 조회 시 `best_ntfc` 선택 로직:
+- `gazette_history`/`drawing_documents`는 보강된 dstplanWtnnc 항목에서 우선 가져옴
+- `notification`은 기존 `best_ntfc` (최신 날짜 기준) 사용
+- 이유: 최신 날짜 기준 `best_ntfc`가 다른 구역(고속철도 등)을 가리키면 보강된 연혁이 누락됨
 
 ## 환경변수 (.env)
 
@@ -195,6 +221,9 @@ ssh -i ~/.ssh/oracle_cloud ubuntu@168.107.53.76 "cd /opt/dup-monitor && git pull
 
 - VWORLD API `domain` 파라미터: `VWORLD_DOMAIN` 환경변수로 설정 (vworld.py, address.py 모두)
 - `routes.py`에서 `address_to_pnu()` 호출 시 반드시 `vworld_domain=settings.vworld_domain` 전달
+- CSS 캐시 버스터: `style.css?v={{ css_v }}` — `css_v`는 style.css의 mtime 타임스탬프 (routes.py에서 Jinja global 설정)
+- 레이아웃: `.container` max-width 1200px, 결과 페이지 상단 홈 버튼 (&#8962;)
+- 결과 페이지 재검색 폼 제거 — 홈 버튼으로 대체
 - 로딩 오버레이: CSS `display: none` 기본, `.active` 클래스로 `display: flex` 전환. 폼 즉시 제출 + 서버 응답 시 자동 전환 (preventDefault 없음)
 - 자동완성: 항목 선택 시 주소만 채움, 폼 자동 제출 안 함
 - 한국 정부 API (VWORLD, juso.go.kr): 해외 서버에서 호출 불가 → 한국 리전 서버 필수
