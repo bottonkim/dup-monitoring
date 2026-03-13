@@ -373,7 +373,9 @@
               {% endif %}
               <div class="history-ref">
                 {% set pdf_name = (h.source_prefix or '서울특별시고시') ~ '_제' ~ h.no ~ '호_고시.pdf' %}
-                {% if h.notice_code %}
+                {% if h.archive_url is defined and h.archive_url %}
+                <a href="{{ h.archive_url }}" target="_blank" rel="noopener">{{ pdf_name }} →</a>
+                {% elif h.notice_code %}
                 <a href="https://urban.seoul.go.kr/view/html/PMNU4030100001?noticeCode={{ h.notice_code }}" target="_blank" rel="noopener">{{ pdf_name }} →</a>
                 {% else %}
                 {{ pdf_name }}

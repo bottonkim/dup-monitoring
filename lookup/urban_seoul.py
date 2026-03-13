@@ -656,6 +656,38 @@ def _parse_gazette_history(
     return history
 
 
+# UPIS API에 미등록된 고시 보충 데이터 (구역명 → 고시 목록)
+# archive_url: UPIS 아카이브 직접 PDF 링크 (notice_code 대신 사용)
+_SUPPLEMENTARY_HISTORY: dict[str, list[dict]] = {
+    "왕십리 광역중심": [
+        {
+            "no": "2021-92",
+            "date": "2021-03-18",
+            "desc": "결정(변경)",
+            "desc_detail": "",
+            "source_prefix": "서울특별시고시",
+            "archive_url": "https://urban.seoul.go.kr/UpisArchive/DATA/PM/DS/11200UQ161PS202403270001/ST/%EC%84%9C%EC%9A%B8%ED%8A%B9%EB%B3%84%EC%8B%9C_%EC%A0%9C2021-92%ED%98%B8_%EA%B3%A0%EC%8B%9C.pdf",
+        },
+        {
+            "no": "2019-312",
+            "date": "2019-09-26",
+            "desc": "결정(변경)",
+            "desc_detail": "",
+            "source_prefix": "서울특별시고시",
+            "archive_url": "https://urban.seoul.go.kr/UpisArchive/DATA/PM/DS/11200UQ161PS202403270001/ST/%EC%84%9C%EC%9A%B8%ED%8A%B9%EB%B3%84%EC%8B%9C_%EC%A0%9C2019-312%ED%98%B8_%EA%B3%A0%EC%8B%9C.pdf",
+        },
+        {
+            "no": "2019-313",
+            "date": "2019-09-26",
+            "desc": "결정(변경)",
+            "desc_detail": "",
+            "source_prefix": "서울특별시고시",
+            "archive_url": "https://urban.seoul.go.kr/UpisArchive/DATA/PM/DS/11200UQ161PS202403270001/ST/%EC%84%9C%EC%9A%B8%ED%8A%B9%EB%B3%84%EC%8B%9C_%EC%A0%9C2019-313%ED%98%B8_%EA%B3%A0%EC%8B%9C.pdf",
+        },
+    ],
+}
+
+
 def _enrich_history_from_ntfc_api(
     sess: requests.Session,
     zone_name: str,
@@ -831,6 +863,14 @@ def _enrich_history_from_ntfc_api(
                 entry = _make_entry(item)
                 entry["bulk_change"] = True  # 일괄 변경 표시
                 added.append(entry)
+
+        # ── Phase 4: 보충 데이터 (UPIS 미등록 고시) ──
+        for supp_key, supp_items in _SUPPLEMENTARY_HISTORY.items():
+            if supp_key in zone_name:
+                for entry in supp_items:
+                    if entry["no"] not in existing_nos:
+                        existing_nos.add(entry["no"])
+                        added.append(dict(entry))  # 원본 변경 방지
 
         if added:
             logger.info(f"UPIS 연혁 보강: {zone_name} — {len(added)}건 추가 (기존 {len(existing_history)}건)")
