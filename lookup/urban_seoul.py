@@ -720,9 +720,10 @@ def _enrich_history_from_ntfc_api(
             # 1) 구역명 전체 매칭 (공백 무시): "왕십리광역중심"
             title_has_zone = kw_nospace in title_nospace
             # 2) 구역명 변경 전 이름: "왕십리부도심" 등
-            #    고유명사 + ("부도심"|"광역중심"|지구단위) — "뉴타운" 제외
+            #    고유명사 + (지구단위|특별계획구역|세부개발계획) — "뉴타운" 제외
             if not title_has_zone:
-                if kw in title and "지구단위" in title and "뉴타운" not in title:
+                _ZONE_KEYWORDS = ("지구단위", "특별계획구역", "세부개발계획")
+                if kw in title and any(zk in title for zk in _ZONE_KEYWORDS) and "뉴타운" not in title:
                     title_has_zone = True
             if not title_has_zone:
                 continue
