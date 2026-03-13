@@ -395,16 +395,25 @@ def fetch_zone_data(pnu: str, timeout: int = 20) -> dict:
                     timeout=min(timeout, 15),
                 )
 
+        # gazette_history/drawing: 보강된 dstplanWtnnc 최우선, 없으면 best_ntfc
+        dstplan_ntfc = None
+        for ntfc in deduped_notifications:
+            if ntfc.get("category_key") == "dstplanWtnnc" and ntfc.get("gazette_history"):
+                if dstplan_ntfc is None or len(ntfc.get("gazette_history", [])) > len(dstplan_ntfc.get("gazette_history", [])):
+                    dstplan_ntfc = ntfc
+
+        history_source = dstplan_ntfc or best_ntfc
         if best_ntfc:
             result["notification"] = best_ntfc.get("notification")
-            result["gazette_history"] = best_ntfc.get("gazette_history", [])
-            result["drawing_documents"] = best_ntfc.get("drawing_documents", [])
             notice_code = best_ntfc.get("notification", {}).get("notice_code", "")
             if notice_code:
                 result["notice_url"] = (
                     f"https://urban.seoul.go.kr/view/html/PMNU4030100001"
                     f"?noticeCode={notice_code}"
                 )
+        if history_source:
+            result["gazette_history"] = history_source.get("gazette_history", [])
+            result["drawing_documents"] = history_source.get("drawing_documents", [])
 
         # 사업정보 파일 목록 보강 (getPropelList — 각 고시별 전체 첨부파일)
         dstplan_wt = None
