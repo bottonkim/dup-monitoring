@@ -563,10 +563,9 @@ def _parse_gazette_history(
         if sp_match:
             source_prefix = sp_match.group(1) + "고시"
 
-        # 서술형 desc 추출: 고시번호 뒤 ~ 다음 고시번호 전 (또는 문장 끝)
+        # 서술형 텍스트 추출: 고시번호 뒤 ~ 다음 고시번호 전
         after_start = m.end()
         if idx + 1 < len(matches):
-            # 다음 고시번호 앞의 발행주체 시작점까지
             next_before = content[max(0, matches[idx + 1].start() - 30):matches[idx + 1].start()]
             np_match = re.search(r"(서울특별시|[가-힣]{2,4}구)\s*고시", next_before)
             if np_match:
@@ -574,25 +573,39 @@ def _parse_gazette_history(
             else:
                 after_end = matches[idx + 1].start()
         else:
-            after_end = min(after_start + 200, len(content))
+            after_end = min(after_start + 300, len(content))
         raw_desc = content[after_start:after_end].strip()
-        # 앞뒤 구두점/접속사 정리
         raw_desc = re.sub(r"^[로으,.\s]+", "", raw_desc)
         raw_desc = re.sub(r"[,.\s]+$", "", raw_desc)
-        desc = raw_desc[:120] if raw_desc else ""
 
-        # desc가 비어있으면 키워드 폴백
+        # desc(짧은 라벨) + desc_detail(서술형) 분리
+        desc = ""
+        desc_detail = ""
+        if raw_desc:
+            # 짧은 라벨 추출: "결정", "결정(변경)", "변경" 등
+            label_match = re.match(r"^((?:지구단위계획구역\s*)?(?:결정\s*\(?\s*변경\s*\)?|결정|변경|지정|해제|폐지))", raw_desc)
+            if label_match:
+                desc = label_match.group(1).strip()
+                rest = raw_desc[label_match.end():].strip()
+                rest = re.sub(r"^[,.\s]+", "", rest)
+                if rest:
+                    desc_detail = rest[:200]
+            else:
+                desc_detail = raw_desc[:200]
+
         if not desc:
             after_short = content[m.end():m.end() + 30]
             for kw in ["결정(변경)", "결정", "변경", "지정", "해제", "폐지"]:
                 if kw in after_short:
                     desc = kw
                     break
+            if not desc:
+                desc = "결정(변경)"
 
-        # 현재 고시번호와 일치하면 notice_code 연결
         nc = current_notice_code if no == current_no else ""
         history.append({
             "no": no, "date": date, "desc": desc,
+            "desc_detail": desc_detail,
             "notice_code": nc, "source_prefix": source_prefix,
         })
 
@@ -610,7 +623,7 @@ def _parse_gazette_history(
             source_prefix = sp_match.group(1) + "고시"
         nc = current_notice_code if no == current_no else ""
         history.append({
-            "no": no, "date": "", "desc": "",
+            "no": no, "date": "", "desc": "", "desc_detail": "",
             "notice_code": nc, "source_prefix": source_prefix,
         })
 
@@ -620,6 +633,7 @@ def _parse_gazette_history(
             "no": current_no,
             "date": current_date,
             "desc": "결정(변경)",
+            "desc_detail": "",
             "notice_code": current_notice_code,
             "source_prefix": "서울특별시고시",
         })

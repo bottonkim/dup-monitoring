@@ -335,12 +335,11 @@
         <h3 class="section-title">도시계획 결정 연혁</h3>
 
         {% if all_notifications %}
-        {% for ntfc in all_notifications %}
+        {# 지구단위계획(dstplanWtnnc)만 표시 #}
+        {% set dstplan_list = all_notifications | selectattr('category_key', 'equalto', 'dstplanWtnnc') | list %}
+        {% for ntfc in dstplan_list %}
         <div class="zone-detail-block">
-          {# 카테고리 헤더 #}
-          <div class="zone-detail-header">
-            <span class="badge-cat badge-cat-{{ ntfc.category_key or 'default' }}">{{ ntfc.category_label }}</span>
-          </div>
+          <span class="badge-cat badge-cat-dstplanWtnnc">지구단위계획</span>
 
           {# 지구단위계획 개요 #}
           <h4 class="zone-sub-title">지구단위계획 개요</h4>
@@ -356,9 +355,6 @@
               {% if ntfc.first_date or ntfc.first_date_info %}
               <tr><th>최초결정일</th><td>{{ ntfc.first_date or '' }}{% if ntfc.first_date_info %} <span class="text-muted">({{ ntfc.first_date_info }})</span>{% endif %}</td></tr>
               {% endif %}
-              {% if ntfc.dcsnobj %}
-              <tr><th>시행지침</th><td class="zone-dcsnobj">{{ ntfc.dcsnobj }}</td></tr>
-              {% endif %}
             </tbody>
           </table>
 
@@ -367,17 +363,22 @@
           <h4 class="zone-sub-title">지구단위계획 결정 및 변경 연혁</h4>
           <div class="history-list">
             {% for h in ntfc.gazette_history %}
-            <div class="history-row{% if loop.first %} history-row-latest{% endif %}">
-              <span class="history-date">{{ h.date or '-' }}</span>
-              <span class="history-desc">{{ h.desc or '-' }}</span>
-              <span class="history-ref">
-                {% set pdf_name = (h.source_prefix or '서울특별시') ~ '_제' ~ h.no ~ '호_고시.pdf' %}
+            <div class="history-item{% if loop.first %} history-item-latest{% endif %}">
+              <div class="history-head">
+                <span class="history-date">{{ h.date or '-' }}</span>
+                <span class="history-label">{{ h.desc or '결정(변경)' }}</span>
+              </div>
+              {% if h.desc_detail %}
+              <div class="history-detail">{{ h.desc_detail }}</div>
+              {% endif %}
+              <div class="history-ref">
+                {% set pdf_name = (h.source_prefix or '서울특별시고시') ~ '_제' ~ h.no ~ '호_고시.pdf' %}
                 {% if h.notice_code %}
-                <a href="https://urban.seoul.go.kr/view/html/PMNU4030100001?noticeCode={{ h.notice_code }}" target="_blank" rel="noopener" class="history-link">- {{ pdf_name }} →</a>
+                <a href="https://urban.seoul.go.kr/view/html/PMNU4030100001?noticeCode={{ h.notice_code }}" target="_blank" rel="noopener">{{ pdf_name }} →</a>
                 {% else %}
-                - {{ pdf_name }}
+                {{ pdf_name }}
                 {% endif %}
-              </span>
+              </div>
             </div>
             {% endfor %}
           </div>

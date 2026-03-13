@@ -548,54 +548,70 @@ a:hover { text-decoration: underline; }
 }
 .text-muted { color: #9ca3af; font-size: 12px; }
 
-/* 연혁 리스트 (flat) */
+/* 연혁 리스트 */
 .history-list {
   display: flex;
   flex-direction: column;
   gap: 0;
 }
-.history-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 6px 0;
-  border-bottom: 1px solid #f3f4f6;
+.history-item {
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f0f0;
   font-size: 13px;
+}
+.history-item:last-child { border-bottom: none; }
+.history-item-latest { background: #fffbeb; margin: 0 -14px; padding: 8px 14px; border-radius: 4px; }
+.history-head {
+  display: flex;
+  gap: 10px;
   align-items: baseline;
+  margin-bottom: 2px;
 }
-.history-row:last-child { border-bottom: none; }
-.history-row-latest { font-weight: 500; }
-.history-row .history-date {
-  flex: 0 0 85px;
+.history-date {
+  flex-shrink: 0;
   color: #6b7280;
   font-size: 12px;
-}
-.history-row .history-desc {
-  flex: 1 1 200px;
-  color: #1f2937;
-  min-width: 0;
-}
-.history-row .history-ref {
-  flex: 0 0 auto;
-  font-size: 12px;
-  color: #6b7280;
   white-space: nowrap;
 }
+.history-label {
+  font-weight: 500;
+  color: #1f2937;
+}
+.history-detail {
+  margin: 3px 0 2px;
+  padding-left: 0;
+  font-size: 12px;
+  color: #4b5563;
+  line-height: 1.5;
+  word-break: break-all;
+}
+.history-ref {
+  font-size: 12px;
+  color: #6b7280;
+  word-break: break-all;
+}
+.history-ref a {
+  color: #2563eb;
+  text-decoration: none;
+}
+.history-ref a:hover { text-decoration: underline; }
 
 /* 도면 리스트 */
 .drawing-list {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  flex-direction: column;
+  gap: 4px;
 }
 .btn-drawing-sm {
-  font-size: 11px;
-  padding: 2px 8px;
+  display: block;
+  font-size: 12px;
+  padding: 4px 8px;
   border: 1px solid #d1d5db;
   border-radius: 4px;
   color: #4b5563;
   text-decoration: none;
   background: #fff;
+  word-break: break-all;
 }
 .btn-drawing-sm:hover { background: #f3f4f6; }
 
@@ -956,17 +972,6 @@ a:hover { text-decoration: underline; }
 .history-table tbody tr:last-child td { border-bottom: none; }
 .history-table tbody tr:hover { background: #f8f9fc; }
 .history-col-no { width: 30px; text-align: center !important; color: #999; }
-.history-row-latest {
-  background: #eff6ff;
-  font-weight: 600;
-}
-.history-date { white-space: nowrap; color: #555; }
-.history-link {
-  color: #003087;
-  font-weight: 600;
-  text-decoration: none;
-}
-.history-link:hover { text-decoration: underline; }
 .history-notice-box {
   background: #fff8e1;
   border: 1px solid #ffe082;
