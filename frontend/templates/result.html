@@ -287,6 +287,8 @@
               </div>
               {% if h.desc_detail %}
               <div class="history-detail">{{ h.desc_detail }}</div>
+              {% elif h.title is defined and h.title %}
+              <div class="history-detail">{{ h.title }}</div>
               {% endif %}
               <div class="history-ref">
                 {% set pdf_name = (h.source_prefix or '서울특별시고시') ~ '_제' ~ h.no ~ '호_고시.pdf' %}

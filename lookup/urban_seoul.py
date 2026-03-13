@@ -783,6 +783,7 @@ def _enrich_history_from_ntfc_api(
             "date": notice_date,
             "desc": desc,
             "desc_detail": desc_detail,
+            "title": title,
             "notice_code": notice_code,
             "source_prefix": source_prefix,
             "drawing_documents": [
