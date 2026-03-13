@@ -226,7 +226,7 @@ GU_CONFIGS = {
         "page_param": "intPage",
         "search_param": "keyword",
     },
-    # --- 강북구 (eminwon 서브도메인 — 복잡한 구조) ---
+    # --- 강북구 (eminwon 서브도메인) ---
     "강북구": {
         "platform": "eminwon_sub",
         "base_url": "https://eminwon.gangbuk.go.kr",
@@ -235,6 +235,48 @@ GU_CONFIGS = {
         "params": {"not_ancmt_se_code": "01,02,04", "list_gubun": "Y"},
         "page_param": "pageIndex",
         "search_param": "not_ancmt_sj",
+    },
+    # --- 중랑구 (portal BBS — 강남구형) ---
+    "중랑구": {
+        "platform": "gangnam_board",
+        "base_url": "https://www.jungnang.go.kr",
+        "list_path": "/portal/bbs/list/B0000117.do",
+        "view_path": "/portal/bbs/view/B0000117/{id}.do",
+        "params": {"menuNo": "200475"},
+        "page_param": "pageIndex",
+        "search_param": "searchKeyword",
+        "search_type_param": "searchCondition",
+        "search_type_value": "1",
+    },
+    # --- 서대문구 ---
+    "서대문구": {
+        "platform": "sdm_bbs",
+        "base_url": "https://www.sdm.go.kr",
+        "list_path": "/news/notice/notice.do",
+        "view_path": "/news/notice/notice.do",
+        "params": {},
+        "page_param": "pageIndex",
+        "search_param": "searchKeyword",
+    },
+    # --- 양천구 (eminwon 변형) ---
+    "양천구": {
+        "platform": "yangcheon_bbs",
+        "base_url": "https://www.yangcheon.go.kr",
+        "list_path": "/site/yangcheon/ex/seolCollectList.do",
+        "view_path": "/site/yangcheon/ex/seolContentDeailView.do",
+        "params": {},
+        "page_param": "pageIndex",
+        "search_param": "searchKeyword",
+    },
+    # --- 중구 ---
+    "중구": {
+        "platform": "junggu_cms",
+        "base_url": "https://www.junggu.seoul.kr",
+        "list_path": "/content.do",
+        "view_path": "/content.do",
+        "params": {"cmsid": "14232"},
+        "page_param": "pageIndex",
+        "search_param": "keyword",
     },
 }
 
@@ -261,12 +303,9 @@ def fetch_gu_announcements(
         if not keyword or len(keyword) < 2:
             continue
         try:
-            if platform == "egov_bbs":
-                items = _search_egov_bbs(config, keyword, timeout)
-            elif platform == "gangnam_board":
-                items = _search_gangnam_board(config, keyword, timeout)
-            elif platform == "asa_portal":
-                items = _search_asa_portal(config, keyword, timeout)
+            search_fn = _PLATFORM_SEARCH.get(platform)
+            if search_fn:
+                items = search_fn(config, keyword, timeout)
             else:
                 items = []
 
@@ -574,3 +613,231 @@ def _classify_quality(text: str) -> str:
         return "minimal"
     hits = sum(1 for kw in _DETAIL_KEYWORDS if kw in text)
     return "detailed" if hits >= 2 else "summary"
+
+
+# ---------------------------------------------------------------------------
+# Platform: eminwon (새올전자민원 — 동대문구, 성북구, 은평구)
+# ---------------------------------------------------------------------------
+
+def _search_eminwon(config: dict, keyword: str, timeout: int) -> list[dict]:
+    """새올전자민원 고시공고 검색"""
+    base = config["base_url"]
+    params = dict(config["params"])
+    params[config.get("page_param", "pageIndex")] = 1
+    params[config.get("search_param", "searchKeyword")] = keyword
+
+    url = base + config["list_path"]
+    resp = requests.get(url, params=params, headers=_HEADERS, timeout=timeout)
+    resp.raise_for_status()
+    resp.encoding = "utf-8"
+
+    return _parse_table_list(resp.text, config)
+
+
+# ---------------------------------------------------------------------------
+# Platform: gwanak_bbs (관악구 bbsNew)
+# ---------------------------------------------------------------------------
+
+def _search_gwanak_bbs(config: dict, keyword: str, timeout: int) -> list[dict]:
+    """관악구 bbsNew 게시판 검색"""
+    base = config["base_url"]
+    params = dict(config["params"])
+    params[config.get("page_param", "pageIndex")] = 1
+    params[config.get("search_param", "searchKeyword")] = keyword
+
+    url = base + config["list_path"]
+    resp = requests.get(url, params=params, headers=_HEADERS, timeout=timeout)
+    resp.raise_for_status()
+    resp.encoding = "utf-8"
+
+    return _parse_table_list(resp.text, config)
+
+
+# ---------------------------------------------------------------------------
+# Platform: gangseo_custom (강서구)
+# ---------------------------------------------------------------------------
+
+def _search_gangseo(config: dict, keyword: str, timeout: int) -> list[dict]:
+    """강서구 커스텀 게시판 검색"""
+    base = config["base_url"]
+    params = {
+        config.get("search_param", "srchText"): keyword,
+        config.get("page_param", "curPage"): 1,
+    }
+
+    url = base + config["list_path"]
+    resp = requests.get(url, params=params, headers=_HEADERS, timeout=timeout)
+    resp.raise_for_status()
+    resp.encoding = "utf-8"
+
+    soup = BeautifulSoup(resp.text, "lxml")
+    results = []
+
+    # 강서구는 테이블 또는 리스트 형태
+    table = soup.select_one("table")
+    if table:
+        return _parse_table_list(resp.text, config)
+
+    # 리스트 형태 폴백
+    for a in soup.select("a[href]"):
+        title = a.get_text(strip=True)
+        if not title or len(title) < 5:
+            continue
+        if not any(kw in title for kw in _RELEVANCE_KEYWORDS):
+            continue
+        href = a.get("href", "")
+        detail_url = href if href.startswith("http") else base + href
+        results.append({
+            "source": "gu_gangseo_custom",
+            "title": title,
+            "url": detail_url,
+            "detail_url": detail_url,
+            "published_at": "",
+            "district": "",
+            "category": _detect_category(title),
+            "body": "",
+            "pdf_urls": [],
+            "content_quality": "minimal",
+        })
+
+    return results
+
+
+# ---------------------------------------------------------------------------
+# Platform: nowon_bbs (노원구 BD_ board)
+# ---------------------------------------------------------------------------
+
+def _search_nowon_bbs(config: dict, keyword: str, timeout: int) -> list[dict]:
+    """노원구 BD_ 게시판 검색"""
+    base = config["base_url"]
+    params = dict(config["params"])
+    params[config.get("page_param", "q_currPage")] = 1
+    params[config.get("search_param", "q_searchVal")] = keyword
+    params["q_searchKey"] = "sj"  # 제목 검색
+
+    url = base + config["list_path"]
+    resp = requests.get(url, params=params, headers=_HEADERS, timeout=timeout)
+    resp.raise_for_status()
+    resp.encoding = "utf-8"
+
+    return _parse_table_list(resp.text, config)
+
+
+# ---------------------------------------------------------------------------
+# Platform: dobong_asp (도봉구 Classic ASP)
+# ---------------------------------------------------------------------------
+
+def _search_dobong_asp(config: dict, keyword: str, timeout: int) -> list[dict]:
+    """도봉구 Classic ASP 게시판 검색"""
+    base = config["base_url"]
+    params = {
+        config.get("search_param", "keyword"): keyword,
+        config.get("page_param", "intPage"): 1,
+    }
+
+    url = base + config["list_path"]
+    resp = requests.get(url, params=params, headers=_HEADERS, timeout=timeout)
+    resp.raise_for_status()
+    # Classic ASP — 인코딩 감지
+    if "euc-kr" in resp.text[:500].lower() or "euc-kr" in resp.headers.get("content-type", "").lower():
+        resp.encoding = "euc-kr"
+    else:
+        resp.encoding = "utf-8"
+
+    return _parse_table_list(resp.text, config)
+
+
+# ---------------------------------------------------------------------------
+# Platform: eminwon_sub (강북구 — eminwon 서브도메인)
+# ---------------------------------------------------------------------------
+
+def _search_eminwon_sub(config: dict, keyword: str, timeout: int) -> list[dict]:
+    """강북구 eminwon 서브도메인 검색"""
+    base = config["base_url"]
+    params = dict(config["params"])
+    params[config.get("page_param", "pageIndex")] = 1
+    params[config.get("search_param", "not_ancmt_sj")] = keyword
+
+    url = base + config["list_path"]
+    resp = requests.get(url, params=params, headers=_HEADERS, timeout=timeout)
+    resp.raise_for_status()
+    resp.encoding = "utf-8"
+
+    return _parse_table_list(resp.text, config)
+
+
+# ---------------------------------------------------------------------------
+# Platform: sdm_bbs (서대문구)
+# ---------------------------------------------------------------------------
+
+def _search_sdm_bbs(config: dict, keyword: str, timeout: int) -> list[dict]:
+    """서대문구 고시공고 검색"""
+    base = config["base_url"]
+    params = dict(config["params"])
+    params[config.get("page_param", "pageIndex")] = 1
+    params[config.get("search_param", "searchKeyword")] = keyword
+
+    url = base + config["list_path"]
+    resp = requests.get(url, params=params, headers=_HEADERS, timeout=timeout)
+    resp.raise_for_status()
+    resp.encoding = "utf-8"
+
+    return _parse_table_list(resp.text, config)
+
+
+# ---------------------------------------------------------------------------
+# Platform: yangcheon_bbs (양천구)
+# ---------------------------------------------------------------------------
+
+def _search_yangcheon_bbs(config: dict, keyword: str, timeout: int) -> list[dict]:
+    """양천구 고시공고 검색"""
+    base = config["base_url"]
+    params = dict(config["params"])
+    params[config.get("page_param", "pageIndex")] = 1
+    params[config.get("search_param", "searchKeyword")] = keyword
+
+    url = base + config["list_path"]
+    resp = requests.get(url, params=params, headers=_HEADERS, timeout=timeout, verify=False)
+    resp.raise_for_status()
+    resp.encoding = "utf-8"
+
+    return _parse_table_list(resp.text, config)
+
+
+# ---------------------------------------------------------------------------
+# Platform: junggu_cms (중구)
+# ---------------------------------------------------------------------------
+
+def _search_junggu_cms(config: dict, keyword: str, timeout: int) -> list[dict]:
+    """중구 CMS 게시판 검색"""
+    base = config["base_url"]
+    params = dict(config["params"])
+    params[config.get("page_param", "pageIndex")] = 1
+    params[config.get("search_param", "keyword")] = keyword
+
+    url = base + config["list_path"]
+    resp = requests.get(url, params=params, headers=_HEADERS, timeout=timeout)
+    resp.raise_for_status()
+    resp.encoding = "utf-8"
+
+    return _parse_table_list(resp.text, config)
+
+
+# ---------------------------------------------------------------------------
+# 플랫폼 → 검색 함수 매핑
+# ---------------------------------------------------------------------------
+
+_PLATFORM_SEARCH = {
+    "egov_bbs": _search_egov_bbs,
+    "gangnam_board": _search_gangnam_board,
+    "asa_portal": _search_asa_portal,
+    "eminwon": _search_eminwon,
+    "gwanak_bbs": _search_gwanak_bbs,
+    "gangseo_custom": _search_gangseo,
+    "nowon_bbs": _search_nowon_bbs,
+    "dobong_asp": _search_dobong_asp,
+    "eminwon_sub": _search_eminwon_sub,
+    "sdm_bbs": _search_sdm_bbs,
+    "yangcheon_bbs": _search_yangcheon_bbs,
+    "junggu_cms": _search_junggu_cms,
+}

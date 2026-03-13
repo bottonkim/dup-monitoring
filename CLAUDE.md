@@ -103,12 +103,13 @@ DB 검색: `title`과 `zone_name` 필드만 LIKE 검색 (raw_content 제외 — 
 
 주소 입력 시 해당 구청만 타겟으로 실시간 검색 (백그라운드 스크래핑 아님):
 - `seoul_notice.py`: 서울시 고시공고 검색 (bbsNo=277, 제목 검색 → 상세페이지 본문 + 첨부 PDF)
-- `gu_announce.py`: 구청 고시공고 (9개 구청: 성동, 강남, 마포, 강동, 송파, 서초, 영등포, 용산, 종로)
+- `gu_announce.py`: 구청 고시공고 (서울시 25개 전 구청, 12개 플랫폼 어댑터)
 - `gu_gazette.py`: 구청 구보 (3개 구청: 성동, 강남, 마포)
 - `gu_planning.py`: 구청 지구단위계획 게시판 (3개 구청: 강남, 서초, 송파)
 
-미설정 구청은 빈 리스트 반환 → 기존 폴백(DB + 시보 PDF)으로 처리.
-구청 설정은 점진적 확대 가능 (GU_CONFIGS dict 구조).
+서울시 25개 전 구청 설정 완료. 12개 플랫폼 어댑터:
+egov_bbs, gangnam_board, asa_portal, eminwon, gwanak_bbs, gangseo_custom,
+nowon_bbs, dobong_asp, eminwon_sub, sdm_bbs, yangcheon_bbs, junggu_cms.
 
 ## UPIS 연혁 데이터 (lookup/urban_seoul.py)
 
