@@ -715,15 +715,15 @@ def _enrich_history_from_ntfc_api(
                 continue
 
             title = item.get("title", "")
-            # 구역명 매칭:
-            # 1) 구역명 전체 "왕십리 광역중심" (공백 무시)
-            # 2) 구역명 고유명사 + "지구단위" (구역명 변경 전 이름 대응)
-            #    예: "왕십리부도심권지구단위계획" → kw="왕십리" + "지구단위"
             title_nospace = title.replace(" ", "")
             kw_nospace = kw_full.replace(" ", "")
+            # 1) 구역명 전체 매칭 (공백 무시): "왕십리광역중심"
             title_has_zone = kw_nospace in title_nospace
-            if not title_has_zone and kw in title and "지구단위" in title:
-                title_has_zone = True
+            # 2) 구역명 변경 전 이름: "왕십리부도심" 등
+            #    고유명사 + ("부도심"|"광역중심"|지구단위) — "뉴타운" 제외
+            if not title_has_zone:
+                if kw in title and "지구단위" in title and "뉴타운" not in title:
+                    title_has_zone = True
             if not title_has_zone:
                 continue
 
