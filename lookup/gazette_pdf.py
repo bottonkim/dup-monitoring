@@ -210,7 +210,7 @@ def _subprocess_worker(q, path_str, terms, ctx_pages, mx_chars):
     """subprocess에서 실행되는 PDF 추출 워커 (모듈 레벨 — Windows pickle 호환)"""
     try:
         import resource
-        mem_limit = 500 * 1024 * 1024  # 500MB
+        mem_limit = 1536 * 1024 * 1024  # 1.5GB (fork 시 부모 VSZ 상속분 고려)
         resource.setrlimit(resource.RLIMIT_AS, (mem_limit, mem_limit))
     except (ImportError, ValueError, OSError):
         pass  # Windows 또는 제한 불가 환경
