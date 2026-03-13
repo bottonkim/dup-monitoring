@@ -815,7 +815,7 @@ def _enrich_history_from_ntfc_api(
         # ── Phase 3: 일괄 변경 건 (전체 지구단위계획구역 대상) ──
         # 2개 키워드로 검색하여 누락 방지
         bulk_items = []
-        for bulk_kw in ["지구단위계획구역", "지구단위계획 결정"]:
+        for bulk_kw in ["지구단위계획구역", "도시관리계획(지구단위"]:
             bulk_items.extend(_search_ntfc_list([bulk_kw], page_size=100))
         seen_bulk = set()
         for item in bulk_items:
