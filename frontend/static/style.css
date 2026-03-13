@@ -494,6 +494,87 @@ a:hover { text-decoration: underline; }
   color: #991b1b;
 }
 .zone-note-redevelopment a { color: #dc2626; }
+
+/* ===== 구역별 고시 정보 카드 (UPIS 전체 카테고리) ===== */
+.zone-ntfc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.zone-ntfc-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: #fafbfc;
+}
+.zone-ntfc-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.zone-ntfc-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: #1f2937;
+}
+.zone-ntfc-location {
+  font-size: 13px;
+  color: #6b7280;
+  margin: 2px 0;
+}
+.zone-ntfc-meta {
+  margin-top: 6px;
+  font-size: 13px;
+}
+.zone-ntfc-notice { font-weight: 500; }
+.zone-ntfc-date { color: #6b7280; margin-left: 4px; }
+.zone-ntfc-title {
+  font-size: 12px;
+  color: #4b5563;
+  margin: 2px 0 0;
+}
+.zone-ntfc-contact {
+  font-size: 12px;
+  color: #9ca3af;
+  margin: 4px 0 0;
+}
+.zone-ntfc-drawings {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.btn-drawing-sm {
+  font-size: 11px;
+  padding: 2px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  color: #4b5563;
+  text-decoration: none;
+  background: #fff;
+}
+.btn-drawing-sm:hover { background: #f3f4f6; }
+
+/* 카테고리별 뱃지 */
+.badge-cat {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+}
+.badge-cat-dstplanWtnnc { background: #d97706; }
+.badge-cat-usgarWtnnc { background: #2563eb; }
+.badge-cat-ubplfcWtnnc { background: #059669; }
+.badge-cat-spcfWtnnc { background: #7c3aed; }
+.badge-cat-etczoneWtnnc { background: #6b7280; }
+.badge-cat-fcmtrWtnnc { background: #0891b2; }
+.badge-cat-default { background: #9ca3af; }
+
 .zone-note {
   margin-top: 8px;
   font-size: 13px;

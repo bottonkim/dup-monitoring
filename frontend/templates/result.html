@@ -325,13 +325,60 @@
         {% endif %}
       </section>
 
-      <!-- ③ 지구단위계획 결정 및 변경 연혁 (서울도시공간포털) -->
-      {% if upis_notification or gazette_history %}
+      <!-- ③ 도시계획 결정 연혁 (서울도시공간포털) -->
+      {% if upis_notification or gazette_history or all_notifications %}
       <section class="result-section">
-        <h3 class="section-title">지구단위계획 결정 및 변경 연혁</h3>
+        <h3 class="section-title">도시계획 결정 연혁</h3>
 
-        {# 최신 고시 정보 — 테이블 형태 #}
-        {% if upis_notification %}
+        {# 전체 구역별 고시 정보 (6개 카테고리) #}
+        {% if all_notifications %}
+        <h4 class="history-sub-title">구역별 고시 정보 ({{ all_notifications|length }}건)</h4>
+        <div class="zone-ntfc-list">
+          {% for ntfc in all_notifications %}
+          <div class="zone-ntfc-card">
+            <div class="zone-ntfc-header">
+              <span class="badge-cat badge-cat-{{ ntfc.category_key or 'default' }}">{{ ntfc.category_label }}</span>
+              <span class="zone-ntfc-name">{{ ntfc.zone_name }}</span>
+            </div>
+            {% if ntfc.location %}
+            <p class="zone-ntfc-location">{{ ntfc.location }}</p>
+            {% endif %}
+            <div class="zone-ntfc-meta">
+              {% if ntfc.notification and ntfc.notification.notice_no %}
+              <span class="zone-ntfc-notice">
+                {% if ntfc.notification.notice_code %}
+                <a href="https://urban.seoul.go.kr/view/html/PMNU4030100001?noticeCode={{ ntfc.notification.notice_code }}" target="_blank" rel="noopener" class="history-link">고시 제{{ ntfc.notification.notice_no }}호 →</a>
+                {% else %}
+                고시 제{{ ntfc.notification.notice_no }}호
+                {% endif %}
+              </span>
+              {% if ntfc.notification.notice_date %}
+              <span class="zone-ntfc-date">({{ ntfc.notification.notice_date }})</span>
+              {% endif %}
+              {% endif %}
+              {% if ntfc.notification and ntfc.notification.title %}
+              <p class="zone-ntfc-title">{{ ntfc.notification.title }}</p>
+              {% endif %}
+            </div>
+            {% if ntfc.notification and (ntfc.notification.site or ntfc.notification.charger) %}
+            <p class="zone-ntfc-contact">{{ ntfc.notification.site }}{% if ntfc.notification.charger %} · {{ ntfc.notification.charger }}{% endif %}{% if ntfc.notification.phone %} ({{ ntfc.notification.phone }}){% endif %}</p>
+            {% endif %}
+            {% if ntfc.drawing_documents %}
+            <div class="zone-ntfc-drawings">
+              {% for doc in ntfc.drawing_documents %}
+              {% if doc.download_url %}
+              <a href="{{ doc.download_url }}" target="_blank" rel="noopener" class="btn-drawing-sm">{{ doc.name }}</a>
+              {% endif %}
+              {% endfor %}
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        {# 최신 고시 정보 요약 (대표 — 하위 호환) #}
+        {% if upis_notification and not all_notifications %}
         <table class="history-info-table">
           <tbody>
             <tr>
@@ -378,12 +425,12 @@
             {% for h in gazette_history %}
             <tr{% if loop.first %} class="history-row-latest"{% endif %}>
               <td class="history-col-no">{{ loop.index }}</td>
-              <td class="history-date">{{ h.date }}</td>
+              <td class="history-date">{{ h.date or '-' }}</td>
               <td>
                 {% if h.notice_code %}
-                <a href="https://urban.seoul.go.kr/view/html/PMNU4030100001?noticeCode={{ h.notice_code }}" target="_blank" rel="noopener" class="history-link">서울특별시 고시 제{{ h.no }}호 →</a>
+                <a href="https://urban.seoul.go.kr/view/html/PMNU4030100001?noticeCode={{ h.notice_code }}" target="_blank" rel="noopener" class="history-link">{{ h.source_prefix or '서울특별시 고시' }} 제{{ h.no }}호 →</a>
                 {% else %}
-                서울특별시 고시 제{{ h.no }}호
+                {{ h.source_prefix or '서울특별시 고시' }} 제{{ h.no }}호
                 {% endif %}
               </td>
               <td>{{ h.desc or '-' }}</td>
@@ -396,7 +443,7 @@
         </div>
         {% endif %}
 
-        {# 도면 문서 목록 #}
+        {# 도면 문서 목록 (대표 고시) #}
         {% if drawing_documents %}
         <h4 class="history-sub-title">첨부 도면 ({{ drawing_documents|length }}건)</h4>
         <table class="drawing-table">

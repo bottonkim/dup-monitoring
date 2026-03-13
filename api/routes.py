@@ -337,7 +337,8 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
         def _task_upis():
             if not pnu:
                 return {"zones": [], "notification": None, "gazette_history": [],
-                        "drawing_documents": [], "portal_url": "", "notice_url": None}
+                        "drawing_documents": [], "all_notifications": [],
+                        "portal_url": "", "notice_url": None}
             from lookup.urban_seoul import fetch_zone_data
             return fetch_zone_data(pnu, timeout=min(to, 25))
 
@@ -444,6 +445,7 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
             result["upis_notification"] = upis_data.get("notification")
             result["gazette_history"] = upis_data.get("gazette_history", [])
             result["drawing_documents"] = upis_data.get("drawing_documents", [])
+            result["all_notifications"] = upis_data.get("all_notifications", [])
             result["urban_portal_url"] = upis_data.get("portal_url", "")
             result["notice_url"] = upis_data.get("notice_url")
 
@@ -484,6 +486,25 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
         seoul_notice_results = []
         gu_results = []
         district = addr_info.get("sggNm", "")
+        emd_nm = addr_info.get("emdNm", "")
+
+        # 구보/구청 검색용 짧은 키워드 (전체 구역명 대신 핵심 지명 + 동이름)
+        def _extract_short_keywords(zone_names, dong_nm):
+            _STRIP = ["지구단위계획구역", "광역중심", "정비구역", "특별계획구역",
+                       "활성화사업", "역세권", "일원", "일대", "지구단위계획"]
+            shorts = []
+            for name in zone_names:
+                short = name
+                for s in _STRIP:
+                    short = short.replace(s, "").strip()
+                if short and len(short) >= 2 and short not in shorts:
+                    shorts.append(short)
+            if dong_nm and dong_nm not in shorts:
+                shorts.append(dong_nm)
+            return shorts[:4]
+
+        gazette_keywords = _extract_short_keywords(specific_zone_names, emd_nm) if specific_zone_names else []
+
         if specific_zone_names:
             def _search_seoul_notices():
                 from lookup.seoul_notice import search_seoul_announcements
@@ -499,7 +520,7 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
                 if not district:
                     return []
                 from lookup.gu_gazette import fetch_gu_gazette
-                return fetch_gu_gazette(district, specific_zone_names[:2], limit=3, timeout=min(to, 15))
+                return fetch_gu_gazette(district, gazette_keywords, limit=3, timeout=min(to, 15))
 
             def _search_gu_planning():
                 if not district:

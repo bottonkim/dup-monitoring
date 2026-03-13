@@ -41,6 +41,16 @@ _QUERY_LAYERS = {
 # UQ141 only has 2 city-wide features → must check intersection manually
 _LARGE_POLYGON_LAYERS = {25}
 
+# getList.json API 카테고리 → 한글 라벨
+_CATEGORY_LABELS = {
+    "usgarWtnnc": "용도지역/지구/구역",
+    "ubplfcWtnnc": "도시계획시설",
+    "spcfWtnnc": "특정구역",
+    "etczoneWtnnc": "기타구역",
+    "dstplanWtnnc": "지구단위계획",
+    "fcmtrWtnnc": "시설물",
+}
+
 
 def _to_upis_pnu(pnu: str) -> str:
     """juso.go.kr PNU → UPIS/토이이음 PNU 변환 (mtYn: '0'→'1', '1'→'2')."""
@@ -271,6 +281,7 @@ def fetch_zone_data(pnu: str, timeout: int = 20) -> dict:
         "notification": None,
         "gazette_history": [],
         "drawing_documents": [],
+        "all_notifications": [],
         "portal_url": f"https://urban.seoul.go.kr/view/map/main.html?pnu={pnu}",
         "notice_url": None,
     }
@@ -305,10 +316,11 @@ def fetch_zone_data(pnu: str, timeout: int = 20) -> dict:
 
         zones = []
         seen_names: set[str] = set()
-        best_ntfc = None  # 가장 정보가 풍부한 tnNtfc 저장
+        best_ntfc = None
+        all_notifications = []
 
         for wt, layer_name in wtnnc_map.items():
-            zone_items, ntfc_data = _get_zone_details_full(sess, wt, timeout)
+            zone_items, ntfc_data, wt_notifications = _get_zone_details_full(sess, wt, timeout)
 
             for item in zone_items:
                 zone_name = item.get("zoneName") or ""
@@ -332,9 +344,14 @@ def fetch_zone_data(pnu: str, timeout: int = 20) -> dict:
                     "wtnnc_sn": wt,
                 })
 
-            # 가장 최신 고시 정보를 선택 (날짜 기준)
+            # 전체 카테고리 알림 수집
+            all_notifications.extend(wt_notifications)
+
+            # best: dstplanWtnnc 최우선
             if ntfc_data and ntfc_data.get("notice_no"):
                 if best_ntfc is None:
+                    best_ntfc = ntfc_data
+                elif ntfc_data.get("category_key") == "dstplanWtnnc" and best_ntfc.get("category_key") != "dstplanWtnnc":
                     best_ntfc = ntfc_data
                 else:
                     new_date = ntfc_data.get("notification", {}).get("notice_date", "")
@@ -343,6 +360,15 @@ def fetch_zone_data(pnu: str, timeout: int = 20) -> dict:
                         best_ntfc = ntfc_data
 
         result["zones"] = zones
+        # 전체 카테고리 알림 (zone_name 기준 중복 제거)
+        seen_ntfc = set()
+        deduped_notifications = []
+        for ntfc in all_notifications:
+            key = (ntfc.get("category_key", ""), ntfc.get("zone_name", ""))
+            if key not in seen_ntfc:
+                seen_ntfc.add(key)
+                deduped_notifications.append(ntfc)
+        result["all_notifications"] = deduped_notifications
 
         if best_ntfc:
             result["notification"] = best_ntfc.get("notification")
@@ -369,7 +395,7 @@ def fetch_zone_data(pnu: str, timeout: int = 20) -> dict:
 
 def _get_zone_details_full(
     sess: requests.Session, wtnnc_sn: str, timeout: int
-) -> tuple[list[dict], dict | None]:
+) -> tuple[list[dict], dict | None, list[dict]]:
     """
     getList.json API로 WTNNC_SN에 해당하는 구역 상세 + 고시 정보 반환.
 
@@ -390,7 +416,7 @@ def _get_zone_details_full(
             timeout=timeout,
         )
         if not resp.content:
-            return [], None
+            return [], None, []
         data = resp.json()
 
         # 구역 정보 추출 (기존 로직)
@@ -404,71 +430,87 @@ def _get_zone_details_full(
                     if zn or loc:
                         zone_items.append(item)
 
-        # 고시 정보 추출 (dstplanWtnnc 우선)
-        ntfc_data = None
-        for item in data.get("dstplanWtnnc", []):
-            if not isinstance(item, dict):
-                continue
-            tn_ntfc = item.get("tnNtfc")
-            if not isinstance(tn_ntfc, dict):
-                continue
+        # 고시 정보 추출 — 6개 카테고리 전체에서 tnNtfc 수집
+        all_notifications = []
+        best_ntfc = None  # dstplanWtnnc 최우선
 
-            notice_no = tn_ntfc.get("noticeNo") or ""
-            if not notice_no:
-                continue
+        for cat_key, cat_label in _CATEGORY_LABELS.items():
+            for item in data.get(cat_key, []):
+                if not isinstance(item, dict):
+                    continue
+                tn_ntfc = item.get("tnNtfc")
+                if not isinstance(tn_ntfc, dict):
+                    continue
 
-            notice_date_raw = tn_ntfc.get("noticeDate") or ""
-            notice_date = notice_date_raw[:10] if notice_date_raw else ""
-            content = tn_ntfc.get("content") or ""
-            title = tn_ntfc.get("title") or ""
-            notice_code = tn_ntfc.get("noticeCode") or ""
+                notice_no = tn_ntfc.get("noticeNo") or ""
+                if not notice_no:
+                    continue
 
-            notification = {
-                "notice_no": notice_no,
-                "notice_date": notice_date,
-                "title": title,
-                "content": content,
-                "notice_code": notice_code,
-                "site": tn_ntfc.get("site") or "",
-                "charger": tn_ntfc.get("charger") or "",
-                "phone": tn_ntfc.get("phone") or "",
-            }
+                notice_date_raw = tn_ntfc.get("noticeDate") or ""
+                notice_date = notice_date_raw[:10] if notice_date_raw else ""
+                content = tn_ntfc.get("content") or ""
+                title = tn_ntfc.get("title") or ""
+                notice_code = tn_ntfc.get("noticeCode") or ""
 
-            # 도면 문서
-            drawing_docs = []
-            for drw in tn_ntfc.get("tnDrwImage", []):
-                if isinstance(drw, dict) and drw.get("dImageName"):
-                    d_path = drw.get("dImagePath", "")
-                    d_name = drw["dImageName"]
-                    # 다운로드 URL: https://urban.seoul.go.kr/{dImagePath}/{dImageName}
-                    dl_url = ""
-                    if d_path and d_name:
-                        encoded_name = quote(d_name, safe="")
-                        dl_url = f"{_BASE_URL}/{d_path}/{encoded_name}"
-                    drawing_docs.append({
-                        "name": d_name,
-                        "code": drw.get("dImageCode", ""),
-                        "download_url": dl_url,
-                    })
+                notification = {
+                    "notice_no": notice_no,
+                    "notice_date": notice_date,
+                    "title": title,
+                    "content": content,
+                    "notice_code": notice_code,
+                    "site": tn_ntfc.get("site") or "",
+                    "charger": tn_ntfc.get("charger") or "",
+                    "phone": tn_ntfc.get("phone") or "",
+                }
 
-            # 연혁 파싱: content에서 고시번호+날짜 추출
-            gazette_history = _parse_gazette_history(
-                content, notice_no, notice_date, notice_code
-            )
+                # 도면 문서
+                drawing_docs = []
+                for drw in tn_ntfc.get("tnDrwImage", []):
+                    if isinstance(drw, dict) and drw.get("dImageName"):
+                        d_path = drw.get("dImagePath", "")
+                        d_name = drw["dImageName"]
+                        dl_url = ""
+                        if d_path and d_name:
+                            encoded_name = quote(d_name, safe="")
+                            dl_url = f"{_BASE_URL}/{d_path}/{encoded_name}"
+                        drawing_docs.append({
+                            "name": d_name,
+                            "code": drw.get("dImageCode", ""),
+                            "download_url": dl_url,
+                        })
 
-            ntfc_data = {
-                "notice_no": notice_no,
-                "notification": notification,
-                "gazette_history": gazette_history,
-                "drawing_documents": drawing_docs,
-            }
-            break  # 첫 번째 유효한 tnNtfc 사용
+                gazette_history = _parse_gazette_history(
+                    content, notice_no, notice_date, notice_code
+                )
 
-        return zone_items, ntfc_data
+                zone_name = item.get("zoneName") or ""
+                location = item.get("locationName") or ""
+
+                ntfc_entry = {
+                    "notice_no": notice_no,
+                    "category_key": cat_key,
+                    "category_label": cat_label,
+                    "zone_name": zone_name,
+                    "location": location,
+                    "notification": notification,
+                    "gazette_history": gazette_history,
+                    "drawing_documents": drawing_docs,
+                }
+                all_notifications.append(ntfc_entry)
+
+                # best: dstplanWtnnc 최우선, 그 외 최신 날짜
+                if best_ntfc is None:
+                    best_ntfc = ntfc_entry
+                elif cat_key == "dstplanWtnnc" and best_ntfc["category_key"] != "dstplanWtnnc":
+                    best_ntfc = ntfc_entry
+                elif cat_key == best_ntfc["category_key"] and notice_date > best_ntfc["notification"]["notice_date"]:
+                    best_ntfc = ntfc_entry
+
+        return zone_items, best_ntfc, all_notifications
 
     except Exception as e:
         logger.debug(f"getList.json 오류 (WTNNC={wtnnc_sn}): {e}")
-        return [], None
+        return [], None, []
 
 
 def _parse_gazette_history(
@@ -485,14 +527,21 @@ def _parse_gazette_history(
     history = []
     seen = set()
 
-    # 패턴: 제YYYY-NNN호 (YYYY.MM.DD.)
-    pattern = r"제(\d{4}-\d+)호\s*\((\d{4})\.(\d{2})\.(\d{2})\.\)"
+    # 패턴: 제YYYY-NNN호 (YYYY.MM.DD.) — 유연 형식 (공백, 1자리 월/일, 마침표 유무)
+    pattern = r"제(\d{4}-\d+)호\s*\(\s*(\d{4})\s*\.\s*(\d{1,2})\s*\.\s*(\d{1,2})\s*\.?\s*\)"
     for m in re.finditer(pattern, content):
         no = m.group(1)
-        date = f"{m.group(2)}-{m.group(3)}-{m.group(4)}"
+        date = f"{m.group(2)}-{int(m.group(3)):02d}-{int(m.group(4)):02d}"
         if no in seen:
             continue
         seen.add(no)
+
+        # 고시 발행 주체 파싱 (서울특별시고시, XX구고시 등)
+        before_full = content[max(0, m.start() - 30):m.start()]
+        source_prefix = ""
+        sp_match = re.search(r"(서울특별시|[가-힣]{2,4}구)\s*고시", before_full)
+        if sp_match:
+            source_prefix = sp_match.group(1) + "고시"
 
         # 고시 번호 뒤의 맥락에서 행위 추출 (결정, 변경 등)
         after = content[m.end():m.end() + 30]
@@ -502,7 +551,6 @@ def _parse_gazette_history(
                 desc = kw
                 break
         if not desc:
-            # 첫 번째 고시는 보통 최초 결정
             before = content[max(0, m.start() - 20):m.start()]
             for kw in ["결정", "변경", "지정"]:
                 if kw in before:
@@ -511,7 +559,28 @@ def _parse_gazette_history(
 
         # 현재 고시번호와 일치하면 notice_code 연결
         nc = current_notice_code if no == current_no else ""
-        history.append({"no": no, "date": date, "desc": desc, "notice_code": nc})
+        history.append({
+            "no": no, "date": date, "desc": desc,
+            "notice_code": nc, "source_prefix": source_prefix,
+        })
+
+    # 날짜 없는 고시번호 2차 수집
+    pattern2 = r"제(\d{4}-\d+)호"
+    for m2 in re.finditer(pattern2, content):
+        no = m2.group(1)
+        if no in seen:
+            continue
+        seen.add(no)
+        before_full = content[max(0, m2.start() - 30):m2.start()]
+        source_prefix = ""
+        sp_match = re.search(r"(서울특별시|[가-힣]{2,4}구)\s*고시", before_full)
+        if sp_match:
+            source_prefix = sp_match.group(1) + "고시"
+        nc = current_notice_code if no == current_no else ""
+        history.append({
+            "no": no, "date": "", "desc": "",
+            "notice_code": nc, "source_prefix": source_prefix,
+        })
 
     # 현재 고시가 content에 없으면 맨 앞에 추가
     if current_no and current_no not in seen:
@@ -520,6 +589,7 @@ def _parse_gazette_history(
             "date": current_date,
             "desc": "결정(변경)",
             "notice_code": current_notice_code,
+            "source_prefix": "서울특별시고시",
         })
 
     # 날짜 역순 정렬 (최신순)
