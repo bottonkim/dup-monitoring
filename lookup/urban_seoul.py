@@ -809,7 +809,15 @@ def _enrich_history_from_ntfc_api(
             desc = "결정"
 
         # desc_detail: content에서 핵심 요약 추출
-        desc_detail = _summarize_ntfc_content(content or title)
+        # desc_detail: title(고시 제목) 우선 — 적절한 상세 수준
+        # content는 행정 절차 문구라 너무 장황함
+        _GENERIC_TITLES = {"결정", "변경", "결정(변경)", "고시", "공고"}
+        if title and title.strip() not in _GENERIC_TITLES and len(title) > 10:
+            desc_detail = title
+        elif content and len(content) > 10:
+            desc_detail = _summarize_ntfc_content(content)
+        else:
+            desc_detail = ""
 
         source_prefix = "서울특별시고시"
         if "구" in str(item.get("deptCode", "")):
