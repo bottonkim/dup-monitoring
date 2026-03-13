@@ -736,6 +736,11 @@ def _enrich_history_from_ntfc_api(
         return existing_history
 
     existing_nos = {h.get("no", "") for h in existing_history}
+    # 기존 항목 중 desc_detail이 비어있는 것들 → API에서 보강
+    _empty_detail_idx = {
+        h.get("no", ""): i for i, h in enumerate(existing_history)
+        if not h.get("desc_detail") and not h.get("title")
+    }
 
     # 구역명에서 검색 키워드 추출
     # "왕십리 광역중심 지구단위계획구역" → 고유명사 "왕십리"
@@ -841,11 +846,22 @@ def _enrich_history_from_ntfc_api(
     _ZONE_KW = ("지구단위", "특별계획구역", "세부개발계획")
     _BULK_PATTERN = re.compile(r"등\s*\d+\s*개\s*(지구단위|구역)")
 
+    def _backfill_detail(item: dict):
+        """기존 항목의 desc_detail/title이 비어있으면 API 데이터로 보강."""
+        notice_no = item.get("noticeNo") or ""
+        if notice_no in _empty_detail_idx:
+            idx = _empty_detail_idx.pop(notice_no)
+            entry = _make_entry(item)
+            if entry.get("desc_detail") or entry.get("title"):
+                existing_history[idx]["desc_detail"] = entry.get("desc_detail", "")
+                existing_history[idx]["title"] = entry.get("title", "")
+
     try:
         # ── Phase 1: 구역명 고유명사로 검색 ──
         items = _search_ntfc_list([kw])
         for item in items:
             notice_no = item.get("noticeNo") or ""
+            _backfill_detail(item)
             if not notice_no or notice_no in existing_nos:
                 continue
             title = item.get("title") or ""
@@ -882,6 +898,7 @@ def _enrich_history_from_ntfc_api(
                 alt_items = _search_ntfc_list([alt_kw])
                 for item in alt_items:
                     notice_no = item.get("noticeNo") or ""
+                    _backfill_detail(item)
                     if not notice_no or notice_no in existing_nos:
                         continue
                     title = item.get("title") or ""
@@ -897,6 +914,7 @@ def _enrich_history_from_ntfc_api(
         seen_bulk = set()
         for item in bulk_items:
             notice_no = item.get("noticeNo") or ""
+            _backfill_detail(item)
             if not notice_no or notice_no in existing_nos or notice_no in seen_bulk:
                 continue
             seen_bulk.add(notice_no)
