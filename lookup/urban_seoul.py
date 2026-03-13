@@ -545,9 +545,11 @@ def _parse_gazette_history(
     history = []
     seen = set()
 
-    # 패턴: 제YYYY-NNN호 (YYYY.MM.DD.) — 유연 형식 (공백, 1자리 월/일, 마침표 유무)
+    # 1차: 모든 고시번호 위치 수집 (desc 추출용)
     pattern = r"제(\d{4}-\d+)호\s*\(\s*(\d{4})\s*\.\s*(\d{1,2})\s*\.\s*(\d{1,2})\s*\.?\s*\)"
-    for m in re.finditer(pattern, content):
+    matches = list(re.finditer(pattern, content))
+
+    for idx, m in enumerate(matches):
         no = m.group(1)
         date = f"{m.group(2)}-{int(m.group(3)):02d}-{int(m.group(4)):02d}"
         if no in seen:
@@ -561,17 +563,29 @@ def _parse_gazette_history(
         if sp_match:
             source_prefix = sp_match.group(1) + "고시"
 
-        # 고시 번호 뒤의 맥락에서 행위 추출 (결정, 변경 등)
-        after = content[m.end():m.end() + 30]
-        desc = ""
-        for kw in ["결정(변경)", "결정", "변경", "지정", "해제", "폐지"]:
-            if kw in after:
-                desc = kw
-                break
+        # 서술형 desc 추출: 고시번호 뒤 ~ 다음 고시번호 전 (또는 문장 끝)
+        after_start = m.end()
+        if idx + 1 < len(matches):
+            # 다음 고시번호 앞의 발행주체 시작점까지
+            next_before = content[max(0, matches[idx + 1].start() - 30):matches[idx + 1].start()]
+            np_match = re.search(r"(서울특별시|[가-힣]{2,4}구)\s*고시", next_before)
+            if np_match:
+                after_end = matches[idx + 1].start() - 30 + np_match.start()
+            else:
+                after_end = matches[idx + 1].start()
+        else:
+            after_end = min(after_start + 200, len(content))
+        raw_desc = content[after_start:after_end].strip()
+        # 앞뒤 구두점/접속사 정리
+        raw_desc = re.sub(r"^[로으,.\s]+", "", raw_desc)
+        raw_desc = re.sub(r"[,.\s]+$", "", raw_desc)
+        desc = raw_desc[:120] if raw_desc else ""
+
+        # desc가 비어있으면 키워드 폴백
         if not desc:
-            before = content[max(0, m.start() - 20):m.start()]
-            for kw in ["결정", "변경", "지정"]:
-                if kw in before:
+            after_short = content[m.end():m.end() + 30]
+            for kw in ["결정(변경)", "결정", "변경", "지정", "해제", "폐지"]:
+                if kw in after_short:
                     desc = kw
                     break
 

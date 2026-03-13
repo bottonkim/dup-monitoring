@@ -343,7 +343,9 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
             return fetch_zone_data(pnu, timeout=min(to, 25))
 
         def _task_tojieum():
-            return fetch_land_use_plan(pnu, to, jibun_address=addr_info.get("address_full", ""))
+            # 토지이음용 PNU 변환 (mtYn '0'→'1', '1'→'2')
+            tj_pnu = result.get("tj_pnu", pnu)
+            return fetch_land_use_plan(tj_pnu, to, jibun_address=addr_info.get("address_full", ""))
 
         with ThreadPoolExecutor(max_workers=6) as pool:
             f_zones    = pool.submit(_safe, _task_zones)
@@ -614,7 +616,8 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
             # 분석 대상 고시 찾기
             for ann in result["announcements"]:
                 cat = ann.get("category", "")
-                if "고시" not in cat and "결정" not in (ann.get("title", "")):
+                if not any(k in cat for k in ("고시", "구보", "결정", "지구단위")) \
+                        and "결정" not in (ann.get("title", "")):
                     continue
                 cn = ann.get("raw_content") or ann.get("cn_content") or ann.get("body") or ""
                 gazette_ref = cn if cn else ann.get("title", "")

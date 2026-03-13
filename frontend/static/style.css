@@ -495,56 +495,26 @@ a:hover { text-decoration: underline; }
 }
 .zone-note-redevelopment a { color: #dc2626; }
 
-/* ===== 구역 상세 블록 (UPIS 포털 팝업 구조) ===== */
+/* ===== 구역 상세 블록 (flat layout) ===== */
 .zone-detail-block {
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   background: #fafbfc;
   margin-bottom: 14px;
-  overflow: hidden;
+  padding: 14px;
 }
 .zone-detail-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 14px 8px;
+  margin-bottom: 10px;
 }
-.zone-detail-name {
-  font-weight: 600;
-  font-size: 14px;
-  color: #1f2937;
-}
-
-/* 탭 네비게이션 */
-.zone-tab-nav {
-  display: flex;
-  border-bottom: 1px solid #e5e7eb;
-  padding: 0 14px;
-  gap: 0;
-}
-.zone-tab-btn {
-  padding: 6px 16px;
+.zone-sub-title {
   font-size: 13px;
-  font-weight: 500;
-  color: #6b7280;
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
+  font-weight: 600;
+  color: #374151;
+  margin: 14px 0 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #e5e7eb;
 }
-.zone-tab-btn:hover { color: #1f2937; }
-.zone-tab-btn.active {
-  color: #1a56db;
-  border-bottom-color: #1a56db;
-}
-
-/* 탭 컨텐츠 */
-.zone-tab-content {
-  display: none;
-  padding: 12px 14px;
-}
-.zone-tab-content.active { display: block; }
+.zone-sub-title:first-of-type { margin-top: 0; }
 
 /* 개요 테이블 */
 .zone-overview-table {
@@ -554,8 +524,8 @@ a:hover { text-decoration: underline; }
 }
 .zone-overview-table th {
   text-align: left;
-  width: 90px;
-  padding: 5px 8px;
+  width: 80px;
+  padding: 4px 8px;
   color: #6b7280;
   font-weight: 500;
   vertical-align: top;
@@ -563,7 +533,7 @@ a:hover { text-decoration: underline; }
   border-bottom: 1px solid #f3f4f6;
 }
 .zone-overview-table td {
-  padding: 5px 8px;
+  padding: 4px 8px;
   border-bottom: 1px solid #f3f4f6;
 }
 .zone-overview-table tr:last-child th,
@@ -573,10 +543,61 @@ a:hover { text-decoration: underline; }
   color: #4b5563;
   line-height: 1.5;
   white-space: pre-wrap;
-  max-height: 120px;
+  max-height: 100px;
   overflow-y: auto;
 }
 .text-muted { color: #9ca3af; font-size: 12px; }
+
+/* 연혁 리스트 (flat) */
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.history-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid #f3f4f6;
+  font-size: 13px;
+  align-items: baseline;
+}
+.history-row:last-child { border-bottom: none; }
+.history-row-latest { font-weight: 500; }
+.history-row .history-date {
+  flex: 0 0 85px;
+  color: #6b7280;
+  font-size: 12px;
+}
+.history-row .history-desc {
+  flex: 1 1 200px;
+  color: #1f2937;
+  min-width: 0;
+}
+.history-row .history-ref {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+/* 도면 리스트 */
+.drawing-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.btn-drawing-sm {
+  font-size: 11px;
+  padding: 2px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  color: #4b5563;
+  text-decoration: none;
+  background: #fff;
+}
+.btn-drawing-sm:hover { background: #f3f4f6; }
 
 /* 카테고리별 뱃지 */
 .badge-cat {
