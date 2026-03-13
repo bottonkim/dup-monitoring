@@ -129,11 +129,11 @@
         <div class="overview-grid">
           <div class="ov-cell">
             <span class="ov-label">지목</span>
-            <span class="ov-value">{{ pi.get('jimok') or li.get('지목') or '—' }}</span>
+            <span class="ov-value">{{ li.get('지목') or pi.get('jimok') or '—' }}</span>
           </div>
           <div class="ov-cell">
             <span class="ov-label">면적</span>
-            <span class="ov-value">{{ pi.get('area') or li.get('면적') or '—' }}</span>
+            <span class="ov-value">{{ li.get('면적') or pi.get('area') or '—' }}</span>
           </div>
           <div class="ov-cell">
             <span class="ov-label">용도지역</span>
@@ -330,55 +330,163 @@
       <section class="result-section">
         <h3 class="section-title">도시계획 결정 연혁</h3>
 
-        {# 전체 구역별 고시 정보 (6개 카테고리) #}
+        {# 구역별 상세 정보 — 개요 + 연혁 (UPIS 포털 팝업 구조) #}
         {% if all_notifications %}
-        <h4 class="history-sub-title">구역별 고시 정보 ({{ all_notifications|length }}건)</h4>
-        <div class="zone-ntfc-list">
-          {% for ntfc in all_notifications %}
-          <div class="zone-ntfc-card">
-            <div class="zone-ntfc-header">
-              <span class="badge-cat badge-cat-{{ ntfc.category_key or 'default' }}">{{ ntfc.category_label }}</span>
-              <span class="zone-ntfc-name">{{ ntfc.zone_name }}</span>
-            </div>
-            {% if ntfc.location %}
-            <p class="zone-ntfc-location">{{ ntfc.location }}</p>
-            {% endif %}
-            <div class="zone-ntfc-meta">
-              {% if ntfc.notification and ntfc.notification.notice_no %}
-              <span class="zone-ntfc-notice">
-                {% if ntfc.notification.notice_code %}
-                <a href="https://urban.seoul.go.kr/view/html/PMNU4030100001?noticeCode={{ ntfc.notification.notice_code }}" target="_blank" rel="noopener" class="history-link">고시 제{{ ntfc.notification.notice_no }}호 →</a>
-                {% else %}
-                고시 제{{ ntfc.notification.notice_no }}호
-                {% endif %}
-              </span>
-              {% if ntfc.notification.notice_date %}
-              <span class="zone-ntfc-date">({{ ntfc.notification.notice_date }})</span>
-              {% endif %}
-              {% endif %}
-              {% if ntfc.notification and ntfc.notification.title %}
-              <p class="zone-ntfc-title">{{ ntfc.notification.title }}</p>
-              {% endif %}
-            </div>
-            {% if ntfc.notification and (ntfc.notification.site or ntfc.notification.charger) %}
-            <p class="zone-ntfc-contact">{{ ntfc.notification.site }}{% if ntfc.notification.charger %} · {{ ntfc.notification.charger }}{% endif %}{% if ntfc.notification.phone %} ({{ ntfc.notification.phone }}){% endif %}</p>
+        {% for ntfc in all_notifications %}
+        <div class="zone-detail-block">
+          <div class="zone-detail-header">
+            <span class="badge-cat badge-cat-{{ ntfc.category_key or 'default' }}">{{ ntfc.category_label }}</span>
+            <span class="zone-detail-name">{{ ntfc.zone_name }}</span>
+          </div>
+
+          {# 탭 네비게이션 #}
+          <div class="zone-tab-nav">
+            <button class="zone-tab-btn active" data-tab="overview-{{ loop.index }}">개요</button>
+            {% if ntfc.gazette_history %}
+            <button class="zone-tab-btn" data-tab="history-{{ loop.index }}">연혁 ({{ ntfc.gazette_history|length }})</button>
             {% endif %}
             {% if ntfc.drawing_documents %}
-            <div class="zone-ntfc-drawings">
-              {% for doc in ntfc.drawing_documents %}
-              {% if doc.download_url %}
-              <a href="{{ doc.download_url }}" target="_blank" rel="noopener" class="btn-drawing-sm">{{ doc.name }}</a>
-              {% endif %}
-              {% endfor %}
-            </div>
+            <button class="zone-tab-btn" data-tab="drawings-{{ loop.index }}">도면 ({{ ntfc.drawing_documents|length }})</button>
             {% endif %}
           </div>
-          {% endfor %}
-        </div>
-        {% endif %}
 
-        {# 최신 고시 정보 요약 (대표 — 하위 호환) #}
-        {% if upis_notification and not all_notifications %}
+          {# 개요 탭 #}
+          <div class="zone-tab-content active" id="overview-{{ loop.index }}">
+            <table class="zone-overview-table">
+              <tbody>
+                <tr>
+                  <th>구역명</th>
+                  <td colspan="3">{{ ntfc.zone_name }}</td>
+                </tr>
+                {% if ntfc.location %}
+                <tr>
+                  <th>위치</th>
+                  <td colspan="3">{{ ntfc.location }}</td>
+                </tr>
+                {% endif %}
+                {% if ntfc.area %}
+                <tr>
+                  <th>면적</th>
+                  <td colspan="3">{{ ntfc.area }}</td>
+                </tr>
+                {% endif %}
+                {% if ntfc.first_date or ntfc.first_date_info %}
+                <tr>
+                  <th>최초 지정</th>
+                  <td colspan="3">
+                    {% if ntfc.first_date %}{{ ntfc.first_date }}{% endif %}
+                    {% if ntfc.first_date_info %}<span class="text-muted"> ({{ ntfc.first_date_info }})</span>{% endif %}
+                  </td>
+                </tr>
+                {% endif %}
+                {% if ntfc.notification and ntfc.notification.notice_no %}
+                <tr>
+                  <th>최신 고시</th>
+                  <td>
+                    {% if ntfc.notification.notice_code %}
+                    <a href="https://urban.seoul.go.kr/view/html/PMNU4030100001?noticeCode={{ ntfc.notification.notice_code }}" target="_blank" rel="noopener" class="history-link">제{{ ntfc.notification.notice_no }}호 →</a>
+                    {% else %}
+                    제{{ ntfc.notification.notice_no }}호
+                    {% endif %}
+                  </td>
+                  <th>고시일</th>
+                  <td>{{ ntfc.notification.notice_date or '-' }}</td>
+                </tr>
+                {% if ntfc.notification.title %}
+                <tr>
+                  <th>고시명</th>
+                  <td colspan="3">{{ ntfc.notification.title }}</td>
+                </tr>
+                {% endif %}
+                {% endif %}
+                {% if ntfc.notification and (ntfc.notification.site or ntfc.notification.charger) %}
+                <tr>
+                  <th>처리기관</th>
+                  <td>{{ ntfc.notification.site or '-' }}</td>
+                  <th>담당자</th>
+                  <td>{{ ntfc.notification.charger or '-' }}{% if ntfc.notification.phone %} ({{ ntfc.notification.phone }}){% endif %}</td>
+                </tr>
+                {% endif %}
+                {% if ntfc.dcsnobj %}
+                <tr>
+                  <th>결정 사유</th>
+                  <td colspan="3" class="zone-dcsnobj">{{ ntfc.dcsnobj }}</td>
+                </tr>
+                {% endif %}
+              </tbody>
+            </table>
+          </div>
+
+          {# 연혁 탭 #}
+          {% if ntfc.gazette_history %}
+          <div class="zone-tab-content" id="history-{{ loop.index }}">
+            <table class="history-table">
+              <thead>
+                <tr>
+                  <th class="history-col-no">#</th>
+                  <th>고시일</th>
+                  <th>고시번호</th>
+                  <th>내용</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for h in ntfc.gazette_history %}
+                <tr{% if loop.first %} class="history-row-latest"{% endif %}>
+                  <td class="history-col-no">{{ loop.index }}</td>
+                  <td class="history-date">{{ h.date or '-' }}</td>
+                  <td>
+                    {% if h.notice_code %}
+                    <a href="https://urban.seoul.go.kr/view/html/PMNU4030100001?noticeCode={{ h.notice_code }}" target="_blank" rel="noopener" class="history-link">{{ h.source_prefix or '서울특별시 고시' }} 제{{ h.no }}호 →</a>
+                    {% else %}
+                    {{ h.source_prefix or '서울특별시 고시' }} 제{{ h.no }}호
+                    {% endif %}
+                  </td>
+                  <td>{{ h.desc or '-' }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+            <div class="history-notice-box">
+              <strong>※ 위 연혁은 전월 기준 자료입니다.</strong> 가장 최근 고시 내용은 아래 <a href="#latest-announcements">「최신 고시공고」</a> 섹션에서 반드시 확인하세요.
+            </div>
+          </div>
+          {% endif %}
+
+          {# 도면 탭 #}
+          {% if ntfc.drawing_documents %}
+          <div class="zone-tab-content" id="drawings-{{ loop.index }}">
+            <table class="drawing-table">
+              <thead>
+                <tr>
+                  <th class="drawing-col-no">#</th>
+                  <th>파일명</th>
+                  <th class="drawing-col-action">보기</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for doc in ntfc.drawing_documents %}
+                <tr>
+                  <td class="drawing-col-no">{{ loop.index }}</td>
+                  <td class="drawing-file-name">{{ doc.name }}</td>
+                  <td class="drawing-col-action">
+                    {% if doc.download_url %}
+                    <a href="{{ doc.download_url }}" target="_blank" rel="noopener" class="btn-drawing-view">열기</a>
+                    {% else %}
+                    <span class="drawing-no-link">-</span>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% endif %}
+        </div>
+        {% endfor %}
+
+        {% else %}
+        {# 하위 호환: all_notifications 없을 때 기존 레이아웃 #}
+        {% if upis_notification %}
         <table class="history-info-table">
           <tbody>
             <tr>
@@ -397,19 +505,10 @@
               <th>고시명</th>
               <td colspan="3">{{ upis_notification.title }}</td>
             </tr>
-            {% if upis_notification.site or upis_notification.charger %}
-            <tr>
-              <th>처리기관</th>
-              <td>{{ upis_notification.site }}</td>
-              <th>담당자</th>
-              <td>{{ upis_notification.charger }}{% if upis_notification.phone %} ({{ upis_notification.phone }}){% endif %}</td>
-            </tr>
-            {% endif %}
           </tbody>
         </table>
         {% endif %}
 
-        {# 연혁 테이블 #}
         {% if gazette_history %}
         <h4 class="history-sub-title">결정/변경 연혁 ({{ gazette_history|length }}건)</h4>
         <table class="history-table">
@@ -443,7 +542,6 @@
         </div>
         {% endif %}
 
-        {# 도면 문서 목록 (대표 고시) #}
         {% if drawing_documents %}
         <h4 class="history-sub-title">첨부 도면 ({{ drawing_documents|length }}건)</h4>
         <table class="drawing-table">
@@ -470,6 +568,7 @@
             {% endfor %}
           </tbody>
         </table>
+        {% endif %}
         {% endif %}
 
         {# 포털 링크 #}
@@ -734,5 +833,17 @@
       <p>데이터 출처: 서울도시공간포털, 서울 열린데이터광장, 서울시보, 국가공간정보오픈플랫폼(VWORLD), 토지이음</p>
     </footer>
   </div>
+  <script>
+  document.querySelectorAll('.zone-tab-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var block = btn.closest('.zone-detail-block');
+      block.querySelectorAll('.zone-tab-btn').forEach(function(b) { b.classList.remove('active'); });
+      block.querySelectorAll('.zone-tab-content').forEach(function(c) { c.classList.remove('active'); });
+      btn.classList.add('active');
+      var target = document.getElementById(btn.getAttribute('data-tab'));
+      if (target) target.classList.add('active');
+    });
+  });
+  </script>
 </body>
 </html>

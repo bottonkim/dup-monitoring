@@ -25,7 +25,7 @@ GU_GAZETTE_CONFIGS = {
         "base_url": "https://www.sd.go.kr",
         "list_path": "/main/selectBbsNttList.do",
         "view_path": "/main/selectBbsNttView.do",
-        "params": {"bbsNo": "182", "key": "1471"},
+        "params": {"bbsNo": "170", "key": "1321"},
         "page_param": "pageIndex",
         "search_param": "searchKeyword",
     },
@@ -66,7 +66,7 @@ def fetch_gu_gazette(
     base = config["base_url"]
 
     # 1단계: 최근 구보 목록 수집 (키워드 필터 없이)
-    candidates = _fetch_recent_list(config, base, timeout, max_items=6)
+    candidates = _fetch_recent_list(config, base, timeout, max_items=10)
     if not candidates:
         return []
 
@@ -79,6 +79,8 @@ def fetch_gu_gazette(
             detail = _fetch_detail(cand["detail_url"], base, timeout)
             body = detail.get("body", "")
 
+            logger.debug(f"구보 상세 ({cand['title']}): body {len(body)}자, url={cand['detail_url']}")
+
             # 구역명 키워드 매칭
             matched_kw = None
             for kw in zone_keywords:
@@ -87,6 +89,7 @@ def fetch_gu_gazette(
                     break
 
             if not matched_kw:
+                logger.debug(f"  키워드 미매칭: {zone_keywords}")
                 continue
 
             # content_quality 판별
@@ -227,7 +230,7 @@ def _fetch_detail(url: str, base: str, timeout: int = 15) -> dict:
     # PDF URL 추출
     pdf_urls = []
     for a in soup.find_all("a", href=True):
-        href = a["href"]
+        href = re.sub(r"\s+", "", a["href"])  # 공백/개행 제거
         fname = (a.get_text() or "").strip().lower()
         if ".pdf" in href.lower() or ".pdf" in fname:
             full = href if href.startswith("http") else base + href

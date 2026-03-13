@@ -486,12 +486,30 @@ def _get_zone_details_full(
                 zone_name = item.get("zoneName") or ""
                 location = item.get("locationName") or ""
 
+                # 개요 정보 추출
+                area_raw = item.get("areaAfter")
+                area_str = ""
+                if area_raw:
+                    try:
+                        area_val = float(area_raw)
+                        area_str = f"{area_val:,.0f}㎡" if area_val >= 1 else ""
+                    except (ValueError, TypeError):
+                        pass
+                first_date_raw = item.get("firstDate") or ""
+                first_date = first_date_raw[:10] if first_date_raw else ""
+                first_date_info = item.get("firstDateInfo") or ""
+                dcsnobj = tn_ntfc.get("dcsnobj") or ""
+
                 ntfc_entry = {
                     "notice_no": notice_no,
                     "category_key": cat_key,
                     "category_label": cat_label,
                     "zone_name": zone_name,
                     "location": location,
+                    "area": area_str,
+                    "first_date": first_date,
+                    "first_date_info": first_date_info,
+                    "dcsnobj": dcsnobj,
                     "notification": notification,
                     "gazette_history": gazette_history,
                     "drawing_documents": drawing_docs,
