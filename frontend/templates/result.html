@@ -378,6 +378,9 @@
                 {% else %}
                 {{ pdf_name }}
                 {% endif %}
+                {% if h.drawing_documents is defined and h.drawing_documents %}
+                <span class="history-drw-badge" title="확인도면 {{ h.drawing_documents|length }}건">📄{{ h.drawing_documents|length }}</span>
+                {% endif %}
               </div>
             </div>
             {% endfor %}

@@ -595,6 +595,12 @@ a:hover { text-decoration: underline; }
   text-decoration: none;
 }
 .history-ref a:hover { text-decoration: underline; }
+.history-drw-badge {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 11px;
+  color: #6b7280;
+}
 
 /* 도면 리스트 */
 .drawing-list {

@@ -15,6 +15,8 @@ _BASE_URL = "https://urban.seoul.go.kr"
 _PROXY_URL = f"{_BASE_URL}/proxy/proxy.jsp"
 _ARCGIS_BASE = "http://98.33.2.225:6080/arcgis/rest/services/UPIS/20200526_WFS/MapServer"
 _LIST_API = f"{_BASE_URL}/api/map/pilji/getList.json"
+_NTFC_LIST_API = f"{_BASE_URL}/ntfc/getNtfcList.json"
+_NTFC_DT_API = f"{_BASE_URL}/ntfc/getNtfcDt.json"
 
 # ArcGIS layer ID → (layer_name, zone_type_kor)
 # C prefix = 현재(current), H = 이력(historical), P = 미래계획(planned)
@@ -370,6 +372,15 @@ def fetch_zone_data(pnu: str, timeout: int = 20) -> dict:
                 deduped_notifications.append(ntfc)
         result["all_notifications"] = deduped_notifications
 
+        # 지구단위계획 연혁 보강 (getNtfcList.json 키워드 검색)
+        for ntfc in deduped_notifications:
+            if ntfc.get("category_key") == "dstplanWtnnc" and ntfc.get("zone_name"):
+                ntfc["gazette_history"] = _enrich_history_from_ntfc_api(
+                    sess, ntfc["zone_name"],
+                    ntfc.get("gazette_history", []),
+                    timeout=min(timeout, 15),
+                )
+
         if best_ntfc:
             result["notification"] = best_ntfc.get("notification")
             result["gazette_history"] = best_ntfc.get("gazette_history", [])
@@ -641,6 +652,132 @@ def _parse_gazette_history(
     # 날짜 역순 정렬 (최신순)
     history.sort(key=lambda h: h.get("date", ""), reverse=True)
     return history
+
+
+def _enrich_history_from_ntfc_api(
+    sess: requests.Session,
+    zone_name: str,
+    existing_history: list[dict],
+    timeout: int = 15,
+) -> list[dict]:
+    """
+    UPIS getNtfcList.json으로 구역명 키워드 검색 → 기존 연혁에 없는 고시 추가.
+    getList.json content 필드에는 원본 결정 체인만 포함되므로,
+    일괄 변경(용적률 완화, 조례 개정 등)은 이 API로 보강.
+    """
+    if not zone_name:
+        return existing_history
+
+    existing_nos = {h.get("no", "") for h in existing_history}
+
+    # 구역명에서 핵심 키워드 추출 (예: "왕십리 광역중심 지구단위계획구역" → "왕십리 광역중심")
+    kw = zone_name
+    for suffix in ["지구단위계획구역", "지구단위계획", "구역"]:
+        kw = kw.replace(suffix, "").strip()
+    if not kw or len(kw) < 2:
+        return existing_history
+
+    try:
+        search_payload = json.dumps({
+            "pageNo": 1,
+            "pageSize": 30,
+            "keywordList": [kw],
+            "pubSiteCode": "",
+            "organCode": "",
+            "bgnDate": "",
+            "endDate": "",
+            "srchType": "title",
+            "noticeCode": "",
+        })
+
+        resp = sess.post(
+            _NTFC_LIST_API,
+            data=search_payload,
+            headers={"Content-Type": "application/json"},
+            timeout=timeout,
+        )
+        if resp.status_code != 200:
+            return existing_history
+
+        data = json.loads(resp.content.decode("utf-8-sig"))
+        items = data.get("content", [])
+        if not items:
+            return existing_history
+
+        added = []
+        for item in items:
+            notice_no = item.get("noticeNo", "")
+            if not notice_no or notice_no in existing_nos:
+                continue
+
+            title = item.get("title", "")
+            # 지구단위계획 관련만 (정비구역, 역세권 등 연관 고시도 포함)
+            if not any(kw_part in title for kw_part in [kw, "지구단위", "용적률", "조례"]):
+                continue
+
+            notice_date_raw = item.get("noticeDate", "")
+            notice_date = notice_date_raw[:10] if notice_date_raw else ""
+            notice_code = item.get("noticeCode", "")
+            drw_images = item.get("tnDrwImage") or []
+
+            # desc: 제목에서 핵심 내용 추출
+            desc = "결정(변경)"
+            title_clean = re.sub(r"도시관리계획\s*\[", "", title)
+            title_clean = re.sub(r"\]\s*결정.*$", "", title_clean)
+            if "결정(변경)" in title:
+                desc = "결정(변경)"
+            elif "변경" in title:
+                desc = "변경"
+            elif "결정" in title:
+                desc = "결정"
+
+            # desc_detail: 제목 전체를 상세 설명으로
+            desc_detail = title[:200] if len(title) > len(desc) + 5 else ""
+
+            # source_prefix 추출
+            source_prefix = "서울특별시고시"
+            pub_site = item.get("pubSiteCode", "")
+            if pub_site and "구" in str(item.get("deptCode", "")):
+                # 구청 고시인 경우
+                dept = item.get("dept", {})
+                instt = dept.get("insttFullName", "") if isinstance(dept, dict) else ""
+                if "구" in instt:
+                    gu_match = re.search(r"([가-힣]+구)", instt)
+                    if gu_match:
+                        source_prefix = gu_match.group(1) + "고시"
+
+            existing_nos.add(notice_no)
+            added.append({
+                "no": notice_no,
+                "date": notice_date,
+                "desc": desc,
+                "desc_detail": desc_detail,
+                "notice_code": notice_code,
+                "source_prefix": source_prefix,
+                "drawing_documents": [
+                    {
+                        "name": d.get("dImageName", ""),
+                        "code": d.get("dImageCode", ""),
+                        "download_url": (
+                            f"{_BASE_URL}/{d.get('dImagePath', '')}/{quote(d['dImageName'], safe='')}"
+                            if d.get("dImagePath") and d.get("dImageName") else ""
+                        ),
+                    }
+                    for d in drw_images
+                    if isinstance(d, dict) and d.get("dImageName")
+                ],
+            })
+
+        if added:
+            logger.info(f"UPIS 연혁 보강: {zone_name} — {len(added)}건 추가 (기존 {len(existing_history)}건)")
+            merged = existing_history + added
+            merged.sort(key=lambda h: h.get("date", ""), reverse=True)
+            return merged
+
+    except Exception as e:
+        logger.debug(f"UPIS getNtfcList 연혁 보강 실패 ({zone_name}): {e}")
+
+    return existing_history
 
 
 def _layer_to_id(layer_name: str) -> int:
