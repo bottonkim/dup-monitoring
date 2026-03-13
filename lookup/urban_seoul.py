@@ -712,11 +712,11 @@ def _enrich_history_from_ntfc_api(
 
     def _make_entry(item: dict) -> dict:
         """getNtfcList 항목 → gazette_history 엔트리 변환."""
-        notice_no = item.get("noticeNo", "")
-        title = item.get("title", "")
-        notice_date_raw = item.get("noticeDate", "")
+        notice_no = item.get("noticeNo") or ""
+        title = item.get("title") or ""
+        notice_date_raw = item.get("noticeDate") or ""
         notice_date = notice_date_raw[:10] if notice_date_raw else ""
-        notice_code = item.get("noticeCode", "")
+        notice_code = item.get("noticeCode") or ""
         drw_images = item.get("tnDrwImage") or []
 
         desc = "결정(변경)"
@@ -768,10 +768,10 @@ def _enrich_history_from_ntfc_api(
         # ── Phase 1: 구역명 고유명사로 검색 ──
         items = _search_ntfc_list([kw])
         for item in items:
-            notice_no = item.get("noticeNo", "")
+            notice_no = item.get("noticeNo") or ""
             if not notice_no or notice_no in existing_nos:
                 continue
-            title = item.get("title", "")
+            title = item.get("title") or ""
             title_nospace = title.replace(" ", "")
             kw_nospace = kw_full.replace(" ", "")
             match = kw_nospace in title_nospace
@@ -804,10 +804,10 @@ def _enrich_history_from_ntfc_api(
             for alt_kw in alt_names:
                 alt_items = _search_ntfc_list([alt_kw])
                 for item in alt_items:
-                    notice_no = item.get("noticeNo", "")
+                    notice_no = item.get("noticeNo") or ""
                     if not notice_no or notice_no in existing_nos:
                         continue
-                    title = item.get("title", "")
+                    title = item.get("title") or ""
                     if alt_kw in title and any(zk in title for zk in _ZONE_KW) and "뉴타운" not in title:
                         existing_nos.add(notice_no)
                         added.append(_make_entry(item))
@@ -819,12 +819,12 @@ def _enrich_history_from_ntfc_api(
             bulk_items.extend(_search_ntfc_list([bulk_kw], page_size=100))
         seen_bulk = set()
         for item in bulk_items:
-            notice_no = item.get("noticeNo", "")
+            notice_no = item.get("noticeNo") or ""
             if not notice_no or notice_no in existing_nos or notice_no in seen_bulk:
                 continue
             seen_bulk.add(notice_no)
-            title = item.get("title", "")
-            content = item.get("content", "")
+            title = item.get("title") or ""
+            content = item.get("content") or ""
             # 제목 또는 content에 "등 N개 지구단위" 패턴이 있으면 일괄 변경
             if _BULK_PATTERN.search(title) or _BULK_PATTERN.search(content):
                 existing_nos.add(notice_no)
