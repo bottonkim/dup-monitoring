@@ -126,14 +126,18 @@
         <!-- 지목 / 면적 / 용도지역 -->
         {% set pi = parcel_info or {} %}
         {% set li = (tojieum_info or {}).get('land_info', {}) %}
+        {% set jimok_raw = li.get('지목', '') %}
+        {% set jimok = jimok_raw if jimok_raw and jimok_raw != '?' else '' %}
+        {% set area_raw = li.get('면적', '') %}
+        {% set area = area_raw if area_raw and area_raw != '?' else '' %}
         <div class="overview-grid">
           <div class="ov-cell">
             <span class="ov-label">지목</span>
-            <span class="ov-value">{{ li.get('지목') or pi.get('jimok') or '—' }}</span>
+            <span class="ov-value">{{ jimok or pi.get('jimok') or '—' }}</span>
           </div>
           <div class="ov-cell">
             <span class="ov-label">면적</span>
-            <span class="ov-value">{{ li.get('면적') or pi.get('area') or '—' }}</span>
+            <span class="ov-value">{{ area or pi.get('area') or '—' }}</span>
           </div>
           <div class="ov-cell">
             <span class="ov-label">용도지역</span>
