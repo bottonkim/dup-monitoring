@@ -156,6 +156,20 @@ def _run_gazette_analysis_inner(
     def _is_detailed(text: str) -> bool:
         return sum(1 for kw in _DETAIL_KEYWORDS if kw in text) >= 2
 
+    def _has_substance(analysis: dict) -> bool:
+        """분석 결과에 실질적 내용이 있는지 확인 (건폐율/용적률/높이 등)"""
+        substance_keys = [
+            "building_coverage_ratio", "floor_area_ratio",
+            "base_floor_area_ratio", "allowed_floor_area_ratio",
+            "max_floor_area_ratio", "max_height_meters", "max_floors",
+            "allowed_uses", "prohibited_uses",
+        ]
+        for k in substance_keys:
+            v = analysis.get(k)
+            if v and str(v).strip() and str(v).strip() not in ("", "없음", "해당없음", "-"):
+                return True
+        return False
+
     def _try_claude(title: str, content: str, source_label: str) -> dict | None:
         if not content or len(content) < 10:
             return None
@@ -174,20 +188,27 @@ def _run_gazette_analysis_inner(
     # 1차: ann_cn이 detailed (결정조서 키워드 포함)
     if ann_cn and _is_detailed(ann_cn):
         r = _try_claude(ann_title, ann_cn, "고시 상세")
-        if r:
+        if r and _has_substance(r):
             return r
+        logger.info(f"1차(고시 상세) 실질 내용 없음 → 다음 폴백")
 
     # 2차: UPIS content가 detailed
     if upis_content and _is_detailed(upis_content):
         r = _try_claude(f"{zone_name} 결정고시", upis_content, "UPIS 상세")
-        if r:
+        if r and _has_substance(r):
             return r
+        logger.info(f"2차(UPIS 상세) 실질 내용 없음 → 다음 폴백")
 
     # 3차: ann_cn이 summary 수준이라도 분석 시도
+    # summary에서 실질 내용 못 추출하면 → 4차(첨부 PDF), 5차(시보 PDF)로 진행
+    best_summary_result = None
     if ann_cn and len(ann_cn) >= 10 and not _is_detailed(ann_cn):
         r = _try_claude(ann_title, ann_cn, "고시공고")
-        if r:
+        if r and _has_substance(r):
             return r
+        if r:
+            best_summary_result = r  # 나중에 폴백 실패 시 반환용
+        logger.info(f"3차(고시공고) 실질 내용 없음 → 4차(첨부 PDF)/5차(시보) 시도")
 
     # 4차: 첨부 PDF 즉시 분석 (1-30MB, subprocess 불필요)
     if pdf_urls:
@@ -218,8 +239,12 @@ def _run_gazette_analysis_inner(
     # 6차: UPIS summary 폴백
     if upis_content and len(upis_content) >= 10 and not _is_detailed(upis_content):
         r = _try_claude(f"{zone_name} 결정고시", upis_content, "UPIS 고시")
-        if r:
+        if r and _has_substance(r):
             return r
+
+    # 모든 폴백 실패 → 이전에 받은 요약 결과라도 반환
+    if best_summary_result:
+        return best_summary_result
 
     return {"error": "분석 실패"}
 
