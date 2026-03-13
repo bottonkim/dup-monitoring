@@ -688,6 +688,52 @@ _SUPPLEMENTARY_HISTORY: dict[str, list[dict]] = {
 }
 
 
+def _summarize_ntfc_content(text: str) -> str:
+    """고시 content/title에서 핵심 내용만 추출하여 짧게 요약."""
+    if not text or len(text) < 5:
+        return ""
+
+    # 1) 따옴표/괄호 안 핵심 정책명 추출
+    quoted = re.findall(r'["\u201c\u201d""]([^"\u201c\u201d""]{4,60})["\u201c\u201d""]', text)
+    if not quoted:
+        quoted = re.findall(r"「([^」]{4,60})」", text)
+
+    # 2) 행위 추출 (결정/변경/완화 등)
+    action = ""
+    for kw in ["결정(변경)", "변경", "결정", "완화", "적용", "해제"]:
+        if kw in text:
+            action = kw
+            break
+
+    if quoted:
+        core = quoted[0].strip()
+        if action and action not in core:
+            return f"{core} {action}"
+        return core
+
+    # 3) 따옴표 없으면: "에 따른/따라" 뒤 ~ "사항/변경" 까지 추출
+    m = re.search(r"(?:에\s*따른?|따라)\s*(.{5,80}?)(?:사항|$)", text)
+    if m:
+        result = m.group(1).strip().rstrip(",. ")
+        return result[:80] + ("…" if len(result) > 80 else "")
+
+    # 4) "을/를 위하여" 앞의 목적어 추출
+    m = re.search(r"(.{5,60}?)(?:을|를)\s*(?:위하여|위해)", text)
+    if m:
+        result = m.group(1).strip()
+        # 앞의 구역명 등 제거
+        result = re.sub(r"^.*?(?:지구단위계획구역\s*)", "", result)
+        if len(result) >= 5:
+            return result[:80]
+
+    # 5) 폴백: 앞부분 80자 (구역명 등 N개 부분 제거)
+    short = re.sub(r"^[가-힣A-Za-z0-9·\s]+(?:등\s*\d+개\s*)?지구단위계획구역\s*", "", text)
+    short = short.strip().lstrip(",. ")
+    if len(short) < 5:
+        short = text
+    return short[:80] + ("…" if len(short) > 80 else "")
+
+
 def _enrich_history_from_ntfc_api(
     sess: requests.Session,
     zone_name: str,
@@ -762,12 +808,8 @@ def _enrich_history_from_ntfc_api(
         elif "결정" in title:
             desc = "결정"
 
-        # desc_detail: content(서술형 설명) 우선, 없으면 title 폴백
-        _MAX = 100
-        if content and len(content) > 10:
-            desc_detail = content[:_MAX] + ("…" if len(content) > _MAX else "")
-        else:
-            desc_detail = title[:_MAX] + ("…" if len(title) > _MAX else "") if len(title) > len(desc) + 5 else ""
+        # desc_detail: content에서 핵심 요약 추출
+        desc_detail = _summarize_ntfc_content(content or title)
 
         source_prefix = "서울특별시고시"
         if "구" in str(item.get("deptCode", "")):
