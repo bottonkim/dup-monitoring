@@ -300,11 +300,11 @@
                 {{ pdf_name }}
                 {% endif %}
                 {% if h.drawing_documents is defined and h.drawing_documents %}
-                <span class="history-drw-badge" title="확인도면 {{ h.drawing_documents|length }}건 (클릭하여 보기)" style="cursor:pointer" onclick="var d=this.nextElementSibling;d.style.display=d.style.display==='none'?'flex':'none'">📄{{ h.drawing_documents|length }}</span>
+                <span class="history-drw-badge" title="첨부파일 {{ h.drawing_documents|length }}건 (클릭하여 보기)" style="cursor:pointer" onclick="var d=this.nextElementSibling;d.style.display=d.style.display==='none'?'flex':'none'">📄{{ h.drawing_documents|length }}</span>
                 <div class="drawing-list history-drw-list" style="display:none">
                   {% for doc in h.drawing_documents %}
                   {% if doc.download_url %}
-                  <a href="{{ doc.download_url }}" target="_blank" rel="noopener" class="btn-drawing-sm">{{ doc.name }}</a>
+                  <a href="{{ doc.download_url }}" target="_blank" rel="noopener" class="btn-drawing-sm">{% if doc.group_label is defined and doc.group_label %}[{{ doc.group_label }}] {% endif %}{{ doc.name }}</a>
                   {% endif %}
                   {% endfor %}
                 </div>

@@ -17,6 +17,18 @@ _ARCGIS_BASE = "http://98.33.2.225:6080/arcgis/rest/services/UPIS/20200526_WFS/M
 _LIST_API = f"{_BASE_URL}/api/map/pilji/getList.json"
 _NTFC_LIST_API = f"{_BASE_URL}/ntfc/getNtfcList.json"
 _NTFC_DT_API = f"{_BASE_URL}/ntfc/getNtfcDt.json"
+_CUQ161_API = f"{_BASE_URL}/dstplan/getCUq161.json"
+_PROPEL_LIST_API = f"{_BASE_URL}/dstplan/getPropelList.json"
+
+# 사업정보 파일 그룹코드 → 한글 라벨
+_FILE_GROUP_LABELS = {
+    "DFL01": "고시문",
+    "DFL02": "결정도",
+    "DFL03": "결정조서",
+    "DFL04": "민간시행지침",
+    "DFL05": "공공시행지침",
+    "DFL06": "기타자료",
+}
 
 # ArcGIS layer ID → (layer_name, zone_type_kor)
 # C prefix = 현재(current), H = 이력(historical), P = 미래계획(planned)
@@ -393,6 +405,15 @@ def fetch_zone_data(pnu: str, timeout: int = 20) -> dict:
                     f"https://urban.seoul.go.kr/view/html/PMNU4030100001"
                     f"?noticeCode={notice_code}"
                 )
+
+        # 사업정보 파일 목록 보강 (getPropelList — 각 고시별 전체 첨부파일)
+        dstplan_wt = None
+        for z in zones:
+            if z.get("zone_type") in ("지구단위계획구역",):
+                dstplan_wt = z.get("wtnnc_sn")
+                break
+        if dstplan_wt and result.get("gazette_history"):
+            _enrich_files_from_propel(sess, dstplan_wt, result["gazette_history"], timeout)
 
         logger.debug(
             f"urban.seoul.go.kr 조회 (PNU={pnu}): "
@@ -954,6 +975,99 @@ def _enrich_history_from_ntfc_api(
         logger.debug(f"UPIS getNtfcList 연혁 보강 실패 ({zone_name}): {e}")
 
     return existing_history
+
+
+def _enrich_files_from_propel(
+    sess: requests.Session,
+    wtnnc_sn: str,
+    gazette_history: list[dict],
+    timeout: int = 15,
+):
+    """
+    사업정보 API(getPropelList)로 각 고시별 전체 첨부파일 목록 보강.
+
+    기존 tnDrwImage(참고자료 6건)가 아닌 결정도(22)+결정조서(1)+시행지침(1)+고시문(1) 등
+    전체 파일을 가져와 gazette_history 각 항목의 drawing_documents에 매핑.
+    """
+    try:
+        # Step 1: wtnnc_sn → presentSn
+        resp1 = sess.post(
+            _CUQ161_API,
+            data=wtnnc_sn,
+            headers={"Content-Type": "application/json; charset=UTF-8"},
+            timeout=timeout,
+        )
+        if not resp1.content:
+            return
+        present_sn = resp1.json().get("presentSn")
+        if not present_sn:
+            return
+
+        # Step 2: presentSn → 고시별 파일 목록
+        resp2 = sess.post(
+            _PROPEL_LIST_API,
+            data={"presentSn": present_sn},
+            timeout=timeout,
+        )
+        if not resp2.content:
+            return
+        propel_items = resp2.json()
+        if not isinstance(propel_items, list):
+            return
+
+        # noticeNo → fileList 매핑
+        no_to_files: dict[str, list[dict]] = {}
+        for item in propel_items:
+            tn = item.get("tnNtfc")
+            if not isinstance(tn, dict):
+                continue
+            notice_no = tn.get("noticeNo") or ""
+            if not notice_no:
+                continue
+            file_list = item.get("fileList")
+            if not isinstance(file_list, list) or not file_list:
+                continue
+            no_to_files[notice_no] = file_list
+
+        if not no_to_files:
+            return
+
+        # gazette_history 각 항목에 파일 매핑
+        enriched = 0
+        for h in gazette_history:
+            h_no = h.get("no", "")
+            if h_no not in no_to_files:
+                continue
+            files = no_to_files[h_no]
+            docs = []
+            for f in files:
+                file_name = f.get("fileName") or ""
+                file_url = f.get("fileUrl") or ""
+                group_code = f.get("groupCode") or ""
+                if not file_name:
+                    continue
+                dl_url = ""
+                if file_url and file_name:
+                    dl_url = f"{_BASE_URL}/{file_url}/{quote(file_name, safe='')}"
+                group_label = _FILE_GROUP_LABELS.get(group_code, group_code)
+                docs.append({
+                    "name": file_name,
+                    "code": group_code,
+                    "group_label": group_label,
+                    "download_url": dl_url,
+                })
+            if docs:
+                h["drawing_documents"] = docs
+                enriched += 1
+
+        if enriched:
+            logger.info(
+                f"사업정보 파일 보강: {enriched}건 고시에 첨부파일 매핑 "
+                f"(presentSn={present_sn})"
+            )
+
+    except Exception as e:
+        logger.debug(f"사업정보 파일 보강 실패 (WTNNC={wtnnc_sn}): {e}")
 
 
 def _layer_to_id(layer_name: str) -> int:
