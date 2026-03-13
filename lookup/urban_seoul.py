@@ -746,6 +746,7 @@ def _enrich_history_from_ntfc_api(
         """getNtfcList 항목 → gazette_history 엔트리 변환."""
         notice_no = item.get("noticeNo") or ""
         title = item.get("title") or ""
+        content = item.get("content") or ""
         notice_date_raw = item.get("noticeDate") or ""
         notice_date = notice_date_raw[:10] if notice_date_raw else ""
         notice_code = item.get("noticeCode") or ""
@@ -761,7 +762,11 @@ def _enrich_history_from_ntfc_api(
         elif "결정" in title:
             desc = "결정"
 
-        desc_detail = title[:200] if len(title) > len(desc) + 5 else ""
+        # desc_detail: content(서술형 설명) 우선, 없으면 title 폴백
+        if content and len(content) > 10:
+            desc_detail = content[:300]
+        else:
+            desc_detail = title[:200] if len(title) > len(desc) + 5 else ""
 
         source_prefix = "서울특별시고시"
         if "구" in str(item.get("deptCode", "")):
