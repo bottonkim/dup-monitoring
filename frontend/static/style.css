@@ -824,6 +824,41 @@ a:hover { text-decoration: underline; }
   margin-top: 8px;
 }
 
+/* AI analysis tabs */
+.ai-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 2px solid #e2e8f0;
+  margin-bottom: 12px;
+}
+.ai-tab {
+  padding: 8px 20px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  font-family: inherit;
+  transition: color 0.15s, border-color 0.15s;
+}
+.ai-tab:hover { color: #003087; }
+.ai-tab-active { color: #003087; border-bottom-color: #003087; }
+.ai-tab-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #003087;
+  margin-bottom: 8px;
+}
+.ai-tab-panel { }
+.ai-tab-src {
+  font-size: 12px;
+  color: #64748b;
+  margin-bottom: 6px;
+}
+
 /* 7-category AI analysis layout */
 .ai-categories { display: flex; flex-direction: column; gap: 10px; }
 .ai-cat {

@@ -121,6 +121,19 @@ def create_app(settings, db_path: Path) -> FastAPI:
         )
         return JSONResponse(content=result)
 
+    @app.post("/api/analyze-gazette-tabs")
+    async def analyze_gazette_tabs_api(request: Request):
+        """열람공고/결정고시 탭 분리 분석 — 두 건 순차 처리"""
+        if not settings.anthropic_api_key:
+            return JSONResponse(content={"error": "API 키 미설정"}, status_code=503)
+        body = await request.json()
+        import asyncio
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None, _run_gazette_analysis_tabs, body, settings,
+        )
+        return JSONResponse(content=result)
+
     return app
 
 
@@ -135,6 +148,37 @@ def _run_gazette_analysis(
             zone_name, gazette_ref, ann_title, ann_cn,
             upis_content, content_quality, pdf_urls or [], settings
         )
+    finally:
+        if acquired:
+            _pdf_analysis_lock.release()
+
+
+def _run_gazette_analysis_tabs(body: dict, settings) -> dict:
+    """열람공고/결정고시 두 건 순차 분석 (세마포어 1회 acquire)"""
+    zone_name = body.get("zone_name", "")
+    upis_content = body.get("upis_content", "")
+    yeolam = body.get("yeolam")
+    gyeoljeong = body.get("gyeoljeong")
+
+    acquired = _pdf_analysis_lock.acquire(timeout=10)
+    try:
+        result = {}
+        # 결정고시 먼저 (확정 데이터 우선)
+        if gyeoljeong:
+            result["gyeoljeong"] = _run_gazette_analysis_inner(
+                zone_name, gyeoljeong.get("gazette_ref", ""),
+                gyeoljeong.get("ann_title", ""), gyeoljeong.get("ann_cn", ""),
+                upis_content, gyeoljeong.get("content_quality", "summary"),
+                gyeoljeong.get("pdf_urls", []), settings,
+            )
+        if yeolam:
+            result["yeolam"] = _run_gazette_analysis_inner(
+                zone_name, yeolam.get("gazette_ref", ""),
+                yeolam.get("ann_title", ""), yeolam.get("ann_cn", ""),
+                upis_content, yeolam.get("content_quality", "summary"),
+                yeolam.get("pdf_urls", []), settings,
+            )
+        return result
     finally:
         if acquired:
             _pdf_analysis_lock.release()
@@ -602,21 +646,22 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
                     primary_zone = n
                     break
 
-            # 외부 소스에서 최적 본문 + PDF URL 수집
-            best_body = ""
-            best_title = ""
+            # 외부 소스에서 카테고리별 본문 + PDF URL 수집
             all_pdf_urls = []
+            ext_yeolam = {"body": "", "title": ""}
+            ext_gyeoljeong = {"body": "", "title": ""}
             for ext in seoul_notice_results + gu_results:
-                # PDF URL 수집
                 for u in (ext.get("pdf_urls") or []):
                     if u and u not in all_pdf_urls:
                         all_pdf_urls.append(u)
-                # 가장 상세한 본문 채택
-                if not best_body and ext.get("content_quality") == "detailed" and ext.get("body"):
-                    best_body = ext["body"][:10000]
-                    best_title = ext.get("title", "")
+                ext_cat = ext.get("category", "")
+                is_yeolam_ext = "열람" in ext_cat or ("공고" in ext_cat and "결정" not in ext_cat)
+                bucket = ext_yeolam if is_yeolam_ext else ext_gyeoljeong
+                if not bucket["body"] and ext.get("content_quality") == "detailed" and ext.get("body"):
+                    bucket["body"] = ext["body"][:10000]
+                    bucket["title"] = ext.get("title", "")
 
-            # 분석 대상 고시 찾기 — primary_zone 키워드 매칭 우선
+            # primary_kw 추출
             primary_kw = ""
             if primary_zone:
                 kw_tmp = primary_zone
@@ -624,44 +669,75 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
                     kw_tmp = kw_tmp.replace(suffix, "").strip()
                 primary_kw = kw_tmp.split()[0] if kw_tmp.split() else ""
 
-            matched_ann = None
-            fallback_ann = None
+            # 열람공고 / 결정고시 각각 최적 매칭
+            yeolam_matched, yeolam_fallback = None, None
+            gyeoljeong_matched, gyeoljeong_fallback = None, None
             for ann in result["announcements"]:
                 cat = ann.get("category", "")
-                if not any(k in cat for k in ("고시", "구보", "결정", "지구단위")) \
-                        and "결정" not in (ann.get("title", "")):
+                title = ann.get("title", "")
+                if not any(k in cat for k in ("고시", "구보", "결정", "지구단위", "공고", "열람")) \
+                        and "결정" not in title and "열람" not in title:
                     continue
-                # 개별 고시의 PDF도 수집
                 for u in (ann.get("pdf_urls") or []):
                     if u and u not in all_pdf_urls:
                         all_pdf_urls.append(u)
                 cn = ann.get("raw_content") or ann.get("cn_content") or ann.get("body") or ""
-                gazette_ref_val = cn if cn else ann.get("title", "")
-                if not gazette_ref_val or not primary_zone:
+                if (not cn and not title) or not primary_zone:
                     continue
-                title = ann.get("title", "")
-                if primary_kw and primary_kw in title and matched_ann is None:
-                    matched_ann = ann
-                elif fallback_ann is None:
-                    fallback_ann = ann
+                is_yeolam = "열람" in cat or ("공고" in cat and "결정" not in cat) or "열람" in title
+                if is_yeolam:
+                    if primary_kw and primary_kw in title and not yeolam_matched:
+                        yeolam_matched = ann
+                    elif not yeolam_fallback:
+                        yeolam_fallback = ann
+                else:
+                    if primary_kw and primary_kw in title and not gyeoljeong_matched:
+                        gyeoljeong_matched = ann
+                    elif not gyeoljeong_fallback:
+                        gyeoljeong_fallback = ann
 
-            target_ann = matched_ann or fallback_ann
-            if target_ann and primary_zone:
+            yeolam_ann = yeolam_matched or yeolam_fallback
+            gyeoljeong_ann = gyeoljeong_matched or gyeoljeong_fallback
+
+            upis_ct = ""
+            if isinstance(upis_data, dict):
+                ntfc = upis_data.get("notification") or {}
+                upis_ct = ntfc.get("content", "") if isinstance(ntfc, dict) else ""
+
+            def _build_tab(target_ann, ext_bucket):
+                if not target_ann or not primary_zone:
+                    return None
                 cn = target_ann.get("raw_content") or target_ann.get("cn_content") or target_ann.get("body") or ""
-                gazette_ref = cn if cn else target_ann.get("title", "")
-                upis_ct = ""
-                if isinstance(upis_data, dict):
-                    ntfc = upis_data.get("notification") or {}
-                    upis_ct = ntfc.get("content", "") if isinstance(ntfc, dict) else ""
-                ann_cn = best_body or cn[:10000]
+                gazette_ref_val = cn if cn else target_ann.get("title", "")
+                ann_cn = ext_bucket["body"] or cn[:10000]
+                return {
+                    "ann_title": ext_bucket["title"] or target_ann.get("title", ""),
+                    "ann_cn": ann_cn,
+                    "gazette_ref": gazette_ref_val[:500],
+                    "content_quality": "detailed" if ext_bucket["body"] else target_ann.get("content_quality", "summary"),
+                    "pdf_urls": all_pdf_urls[:5],
+                }
+
+            yeolam_data = _build_tab(yeolam_ann, ext_yeolam)
+            gyeoljeong_data = _build_tab(gyeoljeong_ann, ext_gyeoljeong)
+
+            if yeolam_data or gyeoljeong_data:
+                result["_ai_pending_tabs"] = {
+                    "zone_name": primary_zone,
+                    "upis_content": upis_ct[:10000],
+                    "yeolam": yeolam_data,
+                    "gyeoljeong": gyeoljeong_data,
+                }
+                # 하위 호환: _ai_pending도 유지
+                compat_data = gyeoljeong_data or yeolam_data
                 result["_ai_pending"] = {
                     "zone_name": primary_zone,
-                    "gazette_ref": gazette_ref[:500],
-                    "ann_title": best_title or target_ann.get("title", ""),
-                    "ann_cn": ann_cn,
+                    "gazette_ref": compat_data["gazette_ref"],
+                    "ann_title": compat_data["ann_title"],
+                    "ann_cn": compat_data["ann_cn"],
                     "upis_content": upis_ct[:10000],
-                    "content_quality": "detailed" if best_body else target_ann.get("content_quality", "summary"),
-                    "pdf_urls": all_pdf_urls[:5],
+                    "content_quality": compat_data["content_quality"],
+                    "pdf_urls": compat_data["pdf_urls"],
                 }
 
         # 조회 이력 저장
