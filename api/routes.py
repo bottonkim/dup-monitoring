@@ -646,17 +646,16 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
                     primary_zone = n
                     break
 
-            # 외부 소스에서 카테고리별 본문 + PDF URL 수집
-            all_pdf_urls = []
-            ext_yeolam = {"body": "", "title": ""}
-            ext_gyeoljeong = {"body": "", "title": ""}
+            # 외부 소스에서 카테고리별 본문 + PDF URL 수집 (탭별 분리)
+            ext_yeolam = {"body": "", "title": "", "pdf_urls": []}
+            ext_gyeoljeong = {"body": "", "title": "", "pdf_urls": []}
             for ext in seoul_notice_results + gu_results:
-                for u in (ext.get("pdf_urls") or []):
-                    if u and u not in all_pdf_urls:
-                        all_pdf_urls.append(u)
                 ext_cat = ext.get("category", "")
                 is_yeolam_ext = "열람" in ext_cat or ("공고" in ext_cat and "결정" not in ext_cat)
                 bucket = ext_yeolam if is_yeolam_ext else ext_gyeoljeong
+                for u in (ext.get("pdf_urls") or []):
+                    if u and u not in bucket["pdf_urls"]:
+                        bucket["pdf_urls"].append(u)
                 if not bucket["body"] and ext.get("content_quality") == "detailed" and ext.get("body"):
                     bucket["body"] = ext["body"][:10000]
                     bucket["title"] = ext.get("title", "")
@@ -678,9 +677,6 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
                 if not any(k in cat for k in ("고시", "구보", "결정", "지구단위", "공고", "열람")) \
                         and "결정" not in title and "열람" not in title:
                     continue
-                for u in (ann.get("pdf_urls") or []):
-                    if u and u not in all_pdf_urls:
-                        all_pdf_urls.append(u)
                 cn = ann.get("raw_content") or ann.get("cn_content") or ann.get("body") or ""
                 if (not cn and not title) or not primary_zone:
                     continue
@@ -710,12 +706,20 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
                 cn = target_ann.get("raw_content") or target_ann.get("cn_content") or target_ann.get("body") or ""
                 gazette_ref_val = cn if cn else target_ann.get("title", "")
                 ann_cn = ext_bucket["body"] or cn[:10000]
+                # 탭별 PDF URL: 해당 고시 + 해당 카테고리 외부소스만
+                tab_pdfs = []
+                for u in (target_ann.get("pdf_urls") or []):
+                    if u and u not in tab_pdfs:
+                        tab_pdfs.append(u)
+                for u in ext_bucket.get("pdf_urls", []):
+                    if u and u not in tab_pdfs:
+                        tab_pdfs.append(u)
                 return {
                     "ann_title": ext_bucket["title"] or target_ann.get("title", ""),
                     "ann_cn": ann_cn,
                     "gazette_ref": gazette_ref_val[:500],
                     "content_quality": "detailed" if ext_bucket["body"] else target_ann.get("content_quality", "summary"),
-                    "pdf_urls": all_pdf_urls[:5],
+                    "pdf_urls": tab_pdfs[:5],
                 }
 
             yeolam_data = _build_tab(yeolam_ann, ext_yeolam)
