@@ -197,7 +197,7 @@ def analyze_image_pdf(
     if target_pages:
         # 2단계: TOC에서 찾은 페이지만 분석
         logger.info(f"TOC 스캔 결과 → 페이지 {target_pages} 분석")
-        pages_to_analyze = target_pages[:max_pages]
+        pages_to_analyze = target_pages[:max(max_pages, 8)]
     else:
         # 기본: 첫 N페이지 분석
         pages_to_analyze = list(range(1, min(max_pages, total_pages or max_pages) + 1))
@@ -285,12 +285,18 @@ def _find_pages_via_toc(
         })
         content.append({"type": "text", "text": f"위는 PDF {i}페이지(목차)입니다."})
 
-    content.append({"type": "text", "text": f"""이 PDF는 총 {total_pages}페이지입니다.
-위 목차 이미지에서 "{zone_name}" 또는 관련 도시계획 내용이 포함된 페이지 번호를 찾아주세요.
+    content.append({"type": "text", "text": f"""이 PDF는 총 {total_pages}페이지의 구보(구청 관보)입니다.
+위 목차 이미지에서 "{zone_name}" 관련 내용이 포함된 페이지 번호를 모두 찾아주세요.
+
+중요: 같은 구역에 대해 여러 섹션이 있을 수 있습니다:
+- 열람공고/결정고시 본문 (변경 개요)
+- 결정조서 (건폐율, 용적률, 높이제한 등 상세 수치가 있는 표)
+- 도면/부록
+이 모든 섹션의 페이지를 포함해주세요.
 
 규칙:
-1. 반드시 JSON 배열만 반환 (예: [15, 16, 17])
-2. 관련 페이지가 여러 개면 모두 포함 (최대 10개)
+1. 반드시 JSON 배열만 반환 (예: [15, 16, 17, 25, 26])
+2. 관련 페이지가 여러 개면 모두 포함 (최대 15개)
 3. 목차에서 찾을 수 없으면 빈 배열 [] 반환
 4. 구역명이 정확히 일치하지 않더라도 유사한 항목 포함
 5. 순수 JSON 배열만 반환, 설명 없이"""})
@@ -312,7 +318,13 @@ def _find_pages_via_toc(
             # 유효한 페이지 번호만 필터
             valid = [p for p in pages if isinstance(p, int) and 1 <= p <= total_pages]
             if valid:
-                logger.info(f"TOC에서 '{zone_name}' 관련 페이지 발견: {valid}")
+                # 찾은 페이지 뒤 3페이지도 포함 (결정조서가 바로 뒤에 있을 수 있음)
+                extended = set(valid)
+                max_found = max(valid)
+                for extra in range(max_found + 1, min(max_found + 4, total_pages + 1)):
+                    extended.add(extra)
+                valid = sorted(extended)
+                logger.info(f"TOC에서 '{zone_name}' 관련 페이지 발견 (확장): {valid}")
                 return valid
         logger.info(f"TOC에서 '{zone_name}' 관련 페이지 미발견")
         return None
