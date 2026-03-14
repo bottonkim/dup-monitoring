@@ -313,17 +313,6 @@
           </div>
           {% endif %}
 
-          {# 첨부 도면 #}
-          {% if ntfc.drawing_documents %}
-          <h4 class="zone-sub-title">첨부 도면 ({{ ntfc.drawing_documents|length }}건)</h4>
-          <div class="drawing-list">
-            {% for doc in ntfc.drawing_documents %}
-            {% if doc.download_url %}
-            <a href="{{ doc.download_url }}" target="_blank" rel="noopener" class="btn-drawing-sm">{{ doc.name }}</a>
-            {% endif %}
-            {% endfor %}
-          </div>
-          {% endif %}
         </div>
         {% endfor %}
 
@@ -367,16 +356,6 @@
         </div>
         {% endif %}
 
-        {% if drawing_documents %}
-        <h4 class="zone-sub-title">첨부 도면 ({{ drawing_documents|length }}건)</h4>
-        <div class="drawing-list">
-          {% for doc in drawing_documents %}
-          {% if doc.download_url %}
-          <a href="{{ doc.download_url }}" target="_blank" rel="noopener" class="btn-drawing-sm">{{ doc.name }}</a>
-          {% endif %}
-          {% endfor %}
-        </div>
-        {% endif %}
         {% endif %}
 
         {# 포털 링크 #}
