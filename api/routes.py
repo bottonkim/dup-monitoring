@@ -156,6 +156,7 @@ def _run_gazette_analysis(
 def _run_gazette_analysis_tabs(body: dict, settings) -> dict:
     """열람공고/결정고시 두 건 순차 분석 (세마포어 1회 acquire)"""
     zone_name = body.get("zone_name", "")
+    sub_zone = body.get("sub_zone", "")
     upis_content = body.get("upis_content", "")
     yeolam = body.get("yeolam")
     gyeoljeong = body.get("gyeoljeong")
@@ -169,14 +170,14 @@ def _run_gazette_analysis_tabs(body: dict, settings) -> dict:
                 zone_name, gyeoljeong.get("gazette_ref", ""),
                 gyeoljeong.get("ann_title", ""), gyeoljeong.get("ann_cn", ""),
                 upis_content, gyeoljeong.get("content_quality", "summary"),
-                gyeoljeong.get("pdf_urls", []), settings,
+                gyeoljeong.get("pdf_urls", []), settings, sub_zone=sub_zone,
             )
         if yeolam:
             result["yeolam"] = _run_gazette_analysis_inner(
                 zone_name, yeolam.get("gazette_ref", ""),
                 yeolam.get("ann_title", ""), yeolam.get("ann_cn", ""),
                 upis_content, yeolam.get("content_quality", "summary"),
-                yeolam.get("pdf_urls", []), settings,
+                yeolam.get("pdf_urls", []), settings, sub_zone=sub_zone,
             )
         return result
     finally:
@@ -187,6 +188,7 @@ def _run_gazette_analysis_tabs(body: dict, settings) -> dict:
 def _run_gazette_analysis_inner(
     zone_name: str, gazette_ref: str, ann_title: str, ann_cn: str,
     upis_content: str, content_quality: str, pdf_urls: list, settings,
+    sub_zone: str = "",
 ) -> dict:
     """AI 분석 6단계 폴백 — 시보 PDF는 최후 수단.
     1. ann_cn (detailed) — 서울시 고시 상세페이지 본문 등
@@ -220,6 +222,9 @@ def _run_gazette_analysis_inner(
     def _try_claude(title: str, content: str, source_label: str) -> dict | None:
         if not content or len(content) < 10:
             return None
+        # 세부 구역(특별계획구역 등)이 있으면 해당 구역 집중 분석 지시
+        if sub_zone and sub_zone not in title:
+            title = f"{title} [분석 대상: {sub_zone}]"
         try:
             analysis = analyze_announcement_with_claude(
                 title, content,
@@ -258,11 +263,12 @@ def _run_gazette_analysis_inner(
         logger.info(f"3차(고시공고) 실질 내용 없음 → 4차(첨부 PDF)/5차(시보) 시도")
 
     # 4차: 첨부 PDF 즉시 분석 (1-30MB, subprocess 불필요)
+    pdf_title = f"{ann_title} [분석 대상: {sub_zone}]" if sub_zone and sub_zone not in ann_title else ann_title
     if pdf_urls:
         try:
             from lookup.pdf_quick_analyze import analyze_small_pdf
             for pu in pdf_urls[:3]:
-                r = analyze_small_pdf(pu, ann_title, settings.anthropic_api_key, settings.claude_model, zone_name=zone_name)
+                r = analyze_small_pdf(pu, pdf_title, settings.anthropic_api_key, settings.claude_model, zone_name=zone_name)
                 if r and not r.get("error"):
                     return r
         except Exception as e:
@@ -652,6 +658,13 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
                     primary_zone = n
                     break
 
+            # 세부 구역명 (특별계획구역 등) — AI 분석 시 해당 구역 집중 추출용
+            sub_zone = ""
+            for n in specific_zone_names:
+                if "특별계획구역" in n or "세부개발계획" in n:
+                    sub_zone = n
+                    break
+
             # 외부 소스에서 카테고리별 본문 + PDF URL 수집 (탭별 분리)
             ext_yeolam = {"body": "", "title": "", "pdf_urls": []}
             ext_gyeoljeong = {"body": "", "title": "", "pdf_urls": []}
@@ -784,6 +797,7 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
             if yeolam_data or gyeoljeong_data:
                 result["_ai_pending_tabs"] = {
                     "zone_name": primary_zone,
+                    "sub_zone": sub_zone,
                     "upis_content": upis_ct[:10000],
                     "yeolam": yeolam_data,
                     "gyeoljeong": gyeoljeong_data,
