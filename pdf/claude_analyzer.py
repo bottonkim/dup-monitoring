@@ -158,10 +158,12 @@ def analyze_image_pdf(
     model: str = "claude-sonnet-4-6",
     max_tokens: int = 4096,
     max_pages: int = 5,
+    zone_name: str = "",
 ) -> dict:
     """
-    이미지 기반 PDF용: 페이지를 이미지로 변환 후 Claude Vision API 사용
-    pdf2image + poppler 필요
+    이미지 기반 PDF용: 페이지를 이미지로 변환 후 Claude Vision API 사용.
+    zone_name이 있고 PDF가 긴 경우 → 2단계 TOC 스캔 (목차→해당 페이지만 분석).
+    pdf2image + poppler 필요.
     """
     try:
         from pdf2image import convert_from_path
@@ -172,13 +174,50 @@ def analyze_image_pdf(
         return {"error": "pdf2image 미설치", "confidence": "low"}
 
     try:
-        images = convert_from_path(str(pdf_path), dpi=150, first_page=1, last_page=max_pages)
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+    except Exception as e:
+        return {"error": str(e), "confidence": "low"}
+
+    # PDF 총 페이지 수 확인
+    try:
+        from pdf2image.pdf2image import pdfinfo_from_path
+        info = pdfinfo_from_path(str(pdf_path))
+        total_pages = info.get("Pages", 0)
+    except Exception:
+        total_pages = 0
+
+    # 긴 PDF + zone_name 있으면 → 2단계 TOC 스캔
+    target_pages = None
+    if zone_name and total_pages > 10:
+        target_pages = _find_pages_via_toc(
+            pdf_path, zone_name, total_pages, client, model, convert_from_path
+        )
+
+    if target_pages:
+        # 2단계: TOC에서 찾은 페이지만 분석
+        logger.info(f"TOC 스캔 결과 → 페이지 {target_pages} 분석")
+        pages_to_analyze = target_pages[:max_pages]
+    else:
+        # 기본: 첫 N페이지 분석
+        pages_to_analyze = list(range(1, min(max_pages, total_pages or max_pages) + 1))
+
+    # 대상 페이지 이미지 변환
+    try:
+        images_with_pages = []
+        for pg in pages_to_analyze:
+            imgs = convert_from_path(str(pdf_path), dpi=150, first_page=pg, last_page=pg)
+            if imgs:
+                images_with_pages.append((pg, imgs[0]))
     except Exception as e:
         logger.error(f"PDF→이미지 변환 실패: {e}")
         return {"error": str(e), "confidence": "low"}
 
+    if not images_with_pages:
+        return {"error": "변환된 이미지 없음", "confidence": "low"}
+
     content = []
-    for i, img in enumerate(images, 1):
+    for pg, img in images_with_pages:
         buf = BytesIO()
         img.save(buf, format="JPEG", quality=85)
         b64 = base64.standard_b64encode(buf.getvalue()).decode()
@@ -186,7 +225,7 @@ def analyze_image_pdf(
             "type": "image",
             "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}
         })
-        content.append({"type": "text", "text": f"위는 PDF {i}페이지입니다."})
+        content.append({"type": "text", "text": f"위는 PDF {pg}페이지입니다."})
 
     content.append({"type": "text", "text": _USER_PROMPT_TEMPLATE.format(
         title=metadata.get("title", ""),
@@ -196,8 +235,6 @@ def analyze_image_pdf(
     )})
 
     try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
         message = client.messages.create(
             model=model,
             max_tokens=max_tokens,
@@ -214,3 +251,71 @@ def analyze_image_pdf(
     except Exception as e:
         logger.error(f"이미지 PDF Claude 분석 실패: {e}")
         return {"error": str(e), "confidence": "low"}
+
+
+def _find_pages_via_toc(
+    pdf_path: Path,
+    zone_name: str,
+    total_pages: int,
+    client,
+    model: str,
+    convert_from_path,
+) -> list[int] | None:
+    """
+    구보/시보 등 긴 PDF의 목차(1-2페이지)를 Vision으로 스캔하여
+    zone_name 관련 페이지 번호를 찾는다.
+    """
+    import base64
+    from io import BytesIO
+
+    try:
+        toc_images = convert_from_path(str(pdf_path), dpi=150, first_page=1, last_page=min(2, total_pages))
+    except Exception as e:
+        logger.warning(f"TOC 이미지 변환 실패: {e}")
+        return None
+
+    content = []
+    for i, img in enumerate(toc_images, 1):
+        buf = BytesIO()
+        img.save(buf, format="JPEG", quality=85)
+        b64 = base64.standard_b64encode(buf.getvalue()).decode()
+        content.append({
+            "type": "image",
+            "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}
+        })
+        content.append({"type": "text", "text": f"위는 PDF {i}페이지(목차)입니다."})
+
+    content.append({"type": "text", "text": f"""이 PDF는 총 {total_pages}페이지입니다.
+위 목차 이미지에서 "{zone_name}" 또는 관련 도시계획 내용이 포함된 페이지 번호를 찾아주세요.
+
+규칙:
+1. 반드시 JSON 배열만 반환 (예: [15, 16, 17])
+2. 관련 페이지가 여러 개면 모두 포함 (최대 10개)
+3. 목차에서 찾을 수 없으면 빈 배열 [] 반환
+4. 구역명이 정확히 일치하지 않더라도 유사한 항목 포함
+5. 순수 JSON 배열만 반환, 설명 없이"""})
+
+    try:
+        message = client.messages.create(
+            model=model,
+            max_tokens=256,
+            temperature=0,
+            messages=[{"role": "user", "content": content}],
+        )
+        raw = message.content[0].text.strip()
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        pages = json.loads(raw)
+        if isinstance(pages, list) and pages:
+            # 유효한 페이지 번호만 필터
+            valid = [p for p in pages if isinstance(p, int) and 1 <= p <= total_pages]
+            if valid:
+                logger.info(f"TOC에서 '{zone_name}' 관련 페이지 발견: {valid}")
+                return valid
+        logger.info(f"TOC에서 '{zone_name}' 관련 페이지 미발견")
+        return None
+    except Exception as e:
+        logger.warning(f"TOC 스캔 실패: {e}")
+        return None

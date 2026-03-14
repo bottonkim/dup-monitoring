@@ -218,7 +218,7 @@ def _run_gazette_analysis_inner(
         try:
             from lookup.pdf_quick_analyze import analyze_small_pdf
             for pu in pdf_urls[:3]:
-                r = analyze_small_pdf(pu, ann_title, settings.anthropic_api_key, settings.claude_model)
+                r = analyze_small_pdf(pu, ann_title, settings.anthropic_api_key, settings.claude_model, zone_name=zone_name)
                 if r and not r.get("error"):
                     return r
         except Exception as e:

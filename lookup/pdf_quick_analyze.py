@@ -29,6 +29,7 @@ def analyze_small_pdf(
     api_key: str,
     model: str = "claude-sonnet-4-6",
     cache_dir: Path = _CACHE_DIR,
+    zone_name: str = "",
 ) -> dict | None:
     """
     소형 PDF 다운로드 → 텍스트 추출 → Claude 분석.
@@ -113,6 +114,7 @@ def analyze_small_pdf(
                     api_key=api_key,
                     model=model,
                     max_pages=5,
+                    zone_name=zone_name,
                 )
                 if result and not result.get("error"):
                     result["_gazette_source"] = "첨부 PDF (이미지)"
