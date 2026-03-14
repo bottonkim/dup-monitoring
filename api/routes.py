@@ -746,6 +746,9 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
 
             yeolam_data = _build_tab(yeolam_ann, ext_yeolam)
             gyeoljeong_data = _build_tab(gyeoljeong_ann, ext_gyeoljeong)
+            logger.info(f"[탭매칭] zone_core='{primary_zone_core}' | "
+                        f"결정={gyeoljeong_ann.get('title','없음')[:60] if gyeoljeong_ann else '없음'} | "
+                        f"열람={yeolam_ann.get('title','없음')[:60] if yeolam_ann else '없음'}")
 
             if yeolam_data or gyeoljeong_data:
                 result["_ai_pending_tabs"] = {
