@@ -83,35 +83,50 @@ def analyze_small_pdf(
     # 텍스트 추출 (PyMuPDF)
     try:
         text = _extract_text_fitz(tmp_path)
-        if not text or len(text) < 50:
-            logger.debug(f"PDF 텍스트 부족 ({len(text) if text else 0}자): {pdf_url[:80]}")
-            return None
+        text_len = len(text) if text else 0
+
+        if text and text_len >= 100:
+            # 텍스트 기반 PDF → Claude 텍스트 분석
+            try:
+                from pdf.claude_analyzer import analyze_pdf
+                result = analyze_pdf(
+                    pdf_text=text,
+                    metadata={"title": title, "source": "첨부 PDF", "published_at": ""},
+                    api_key=api_key,
+                    model=model,
+                    max_pdf_chars=50000,
+                )
+                if result and not result.get("error"):
+                    result["_gazette_source"] = "첨부 PDF"
+                    cache_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+                    return result
+            except Exception as e:
+                logger.warning(f"PDF Claude 분석 실패: {e}")
+        else:
+            # 이미지 기반 PDF → Claude Vision API 폴백
+            logger.info(f"PDF 텍스트 부족 ({text_len}자), Vision API 폴백: {pdf_url[:80]}")
+            try:
+                from pdf.claude_analyzer import analyze_image_pdf
+                result = analyze_image_pdf(
+                    pdf_path=tmp_path,
+                    metadata={"title": title, "source": "첨부 PDF (이미지)", "published_at": ""},
+                    api_key=api_key,
+                    model=model,
+                    max_pages=5,
+                )
+                if result and not result.get("error"):
+                    result["_gazette_source"] = "첨부 PDF (이미지)"
+                    cache_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+                    return result
+            except Exception as e:
+                logger.warning(f"이미지 PDF Vision 분석 실패: {e}")
     except Exception as e:
         logger.warning(f"PDF 텍스트 추출 실패: {e}")
-        return None
     finally:
         try:
             tmp_path.unlink()
         except Exception:
             pass
-
-    # Claude 분석
-    try:
-        from pdf.claude_analyzer import analyze_pdf
-        result = analyze_pdf(
-            pdf_text=text,
-            metadata={"title": title, "source": "첨부 PDF", "published_at": ""},
-            api_key=api_key,
-            model=model,
-            max_pdf_chars=50000,
-        )
-        if result and not result.get("error"):
-            result["_gazette_source"] = "첨부 PDF"
-            # 캐시 저장
-            cache_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
-            return result
-    except Exception as e:
-        logger.warning(f"PDF Claude 분석 실패: {e}")
 
     return None
 

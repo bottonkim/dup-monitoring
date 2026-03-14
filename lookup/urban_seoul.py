@@ -367,6 +367,8 @@ def fetch_zone_data(pnu: str, timeout: int = 20) -> dict:
                     best_ntfc = ntfc_data
                 elif ntfc_data.get("category_key") == "dstplanWtnnc" and best_ntfc.get("category_key") != "dstplanWtnnc":
                     best_ntfc = ntfc_data
+                elif best_ntfc.get("category_key") == "dstplanWtnnc" and ntfc_data.get("category_key") != "dstplanWtnnc":
+                    pass  # dstplanWtnnc 유지, 비-dstplan이 덮어쓰지 않음
                 else:
                     new_date = ntfc_data.get("notification", {}).get("notice_date", "")
                     old_date = best_ntfc.get("notification", {}).get("notice_date", "")
@@ -382,6 +384,12 @@ def fetch_zone_data(pnu: str, timeout: int = 20) -> dict:
             if key not in seen_ntfc:
                 seen_ntfc.add(key)
                 deduped_notifications.append(ntfc)
+        # dstplanWtnnc 우선 정렬
+        _cat_order = {"dstplanWtnnc": 0, "spcfWtnnc": 1, "fcmtrWtnnc": 2,
+                      "ubplfcWtnnc": 3, "usgarWtnnc": 4, "etczoneWtnnc": 5}
+        deduped_notifications.sort(
+            key=lambda n: _cat_order.get(n.get("category_key", ""), 9)
+        )
         result["all_notifications"] = deduped_notifications
 
         # 지구단위계획 연혁 보강 (getNtfcList.json 키워드 검색)
@@ -403,9 +411,10 @@ def fetch_zone_data(pnu: str, timeout: int = 20) -> dict:
                     dstplan_ntfc = ntfc
 
         history_source = dstplan_ntfc or best_ntfc
-        if best_ntfc:
-            result["notification"] = best_ntfc.get("notification")
-            notice_code = best_ntfc.get("notification", {}).get("notice_code", "")
+        notification_source = dstplan_ntfc or best_ntfc
+        if notification_source:
+            result["notification"] = notification_source.get("notification")
+            notice_code = notification_source.get("notification", {}).get("notice_code", "")
             if notice_code:
                 result["notice_url"] = (
                     f"https://urban.seoul.go.kr/view/html/PMNU4030100001"

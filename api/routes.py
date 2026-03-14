@@ -616,34 +616,53 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
                     best_body = ext["body"][:10000]
                     best_title = ext.get("title", "")
 
-            # 분석 대상 고시 찾기
+            # 분석 대상 고시 찾기 — primary_zone 키워드 매칭 우선
+            primary_kw = ""
+            if primary_zone:
+                kw_tmp = primary_zone
+                for suffix in ["지구단위계획구역", "지구단위계획", "정비구역", "특별계획구역", "구역"]:
+                    kw_tmp = kw_tmp.replace(suffix, "").strip()
+                primary_kw = kw_tmp.split()[0] if kw_tmp.split() else ""
+
+            matched_ann = None
+            fallback_ann = None
             for ann in result["announcements"]:
                 cat = ann.get("category", "")
                 if not any(k in cat for k in ("고시", "구보", "결정", "지구단위")) \
                         and "결정" not in (ann.get("title", "")):
                     continue
-                cn = ann.get("raw_content") or ann.get("cn_content") or ann.get("body") or ""
-                gazette_ref = cn if cn else ann.get("title", "")
                 # 개별 고시의 PDF도 수집
                 for u in (ann.get("pdf_urls") or []):
                     if u and u not in all_pdf_urls:
                         all_pdf_urls.append(u)
-                if gazette_ref and primary_zone:
-                    upis_ct = ""
-                    if isinstance(upis_data, dict):
-                        ntfc = upis_data.get("notification") or {}
-                        upis_ct = ntfc.get("content", "") if isinstance(ntfc, dict) else ""
-                    ann_cn = best_body or cn[:10000]
-                    result["_ai_pending"] = {
-                        "zone_name": primary_zone,
-                        "gazette_ref": gazette_ref[:500],
-                        "ann_title": best_title or ann.get("title", ""),
-                        "ann_cn": ann_cn,
-                        "upis_content": upis_ct[:10000],
-                        "content_quality": "detailed" if best_body else ann.get("content_quality", "summary"),
-                        "pdf_urls": all_pdf_urls[:5],
-                    }
-                    break
+                cn = ann.get("raw_content") or ann.get("cn_content") or ann.get("body") or ""
+                gazette_ref_val = cn if cn else ann.get("title", "")
+                if not gazette_ref_val or not primary_zone:
+                    continue
+                title = ann.get("title", "")
+                if primary_kw and primary_kw in title and matched_ann is None:
+                    matched_ann = ann
+                elif fallback_ann is None:
+                    fallback_ann = ann
+
+            target_ann = matched_ann or fallback_ann
+            if target_ann and primary_zone:
+                cn = target_ann.get("raw_content") or target_ann.get("cn_content") or target_ann.get("body") or ""
+                gazette_ref = cn if cn else target_ann.get("title", "")
+                upis_ct = ""
+                if isinstance(upis_data, dict):
+                    ntfc = upis_data.get("notification") or {}
+                    upis_ct = ntfc.get("content", "") if isinstance(ntfc, dict) else ""
+                ann_cn = best_body or cn[:10000]
+                result["_ai_pending"] = {
+                    "zone_name": primary_zone,
+                    "gazette_ref": gazette_ref[:500],
+                    "ann_title": best_title or target_ann.get("title", ""),
+                    "ann_cn": ann_cn,
+                    "upis_content": upis_ct[:10000],
+                    "content_quality": "detailed" if best_body else target_ann.get("content_quality", "summary"),
+                    "pdf_urls": all_pdf_urls[:5],
+                }
 
         # 조회 이력 저장
         log_lookup(conn, address, pnu, zone_names, result)

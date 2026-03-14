@@ -252,14 +252,12 @@
         </div>
 
         {% if all_notifications %}
-        {# 지구단위계획(dstplanWtnnc)만 표시 #}
-        {% set dstplan_list = all_notifications | selectattr('category_key', 'equalto', 'dstplanWtnnc') | list %}
-        {% for ntfc in dstplan_list %}
+        {% for ntfc in all_notifications %}
         <div class="zone-detail-block">
-          <span class="badge-cat badge-cat-dstplanWtnnc">지구단위계획</span>
+          <span class="badge-cat badge-cat-{{ ntfc.category_key }}">{{ ntfc.category_label }}</span>
 
-          {# 지구단위계획 개요 #}
-          <h4 class="zone-sub-title">지구단위계획 개요</h4>
+          {# 구역 개요 #}
+          <h4 class="zone-sub-title">{{ ntfc.category_label }} 개요</h4>
           <table class="zone-overview-table">
             <tbody>
               <tr><th>구역명</th><td>{{ ntfc.zone_name }}</td></tr>
@@ -277,7 +275,7 @@
 
           {# 지구단위계획 결정 및 변경 연혁 #}
           {% if ntfc.gazette_history %}
-          <h4 class="zone-sub-title">지구단위계획 결정 및 변경 연혁</h4>
+          <h4 class="zone-sub-title">결정 및 변경 연혁</h4>
           <div class="history-list">
             {% for h in ntfc.gazette_history %}
             <div class="history-item{% if loop.first %} history-item-latest{% endif %}">
@@ -502,7 +500,7 @@
                 고시번호: {{ ext.gazette_number }}{% if ext.announcement_date %} ({{ ext.announcement_date }}){% endif %}
                 {% if ext.confidence %}
                 <span class="ai-conf {% if ext.confidence == 'high' %}conf-high{% elif ext.confidence == 'medium' %}conf-medium{% else %}conf-low{% endif %}">
-                  {% if ext.confidence == 'high' %}신뢰도 높음{% elif ext.confidence == 'medium' %}신뢰도 보통{% else %}신뢰도 낮음{% endif %}
+                  {% if ext.confidence == 'high' %}분석 충실도 높음{% elif ext.confidence == 'medium' %}분석 충실도 보통{% else %}분석 충실도 낮음{% endif %}
                 </span>
                 {% endif %}
                 {% if ext._gazette_source %}
@@ -553,7 +551,7 @@
               }
               var srcLabel = data._gazette_source || '고시공고';
               var confClass = data.confidence === 'high' ? 'conf-high' : (data.confidence === 'medium' ? 'conf-medium' : 'conf-low');
-              var confText = data.confidence === 'high' ? '높음' : (data.confidence === 'medium' ? '보통' : '낮음');
+              var confText = data.confidence === 'high' ? '분석 충실도 높음' : (data.confidence === 'medium' ? '분석 충실도 보통' : '분석 충실도 낮음');
               var html = '<div class="ai-header"><span class="ai-badge">AI 분석</span><span class="ai-source">' + (data.zone_name || pending.ann_title).substring(0, 60) + '</span>';
               html += '<span class="ai-conf ' + confClass + '">' + confText + '</span>';
               html += '<span class="ai-src-label">' + srcLabel + '</span></div>';
