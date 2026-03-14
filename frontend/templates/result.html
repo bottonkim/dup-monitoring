@@ -388,86 +388,109 @@
               <p class="ai-summary-text">{{ ext.summary_korean }}</p>
               {% endif %}
 
-              {# ① 건폐율 / 용적률 / 높이 수치 그리드 #}
-              {% set has_nums = ext.building_coverage_ratio or ext.base_floor_area_ratio or ext.allowed_floor_area_ratio or ext.max_floor_area_ratio or ext.floor_area_ratio or ext.max_height_meters or ext.max_floors %}
-              {% if has_nums %}
-              <div class="restriction-grid">
-                {% if ext.building_coverage_ratio %}<div class="r-cell"><span class="r-label">건폐율</span><span class="r-value">{{ ext.building_coverage_ratio }}</span></div>{% endif %}
-                {% if ext.base_floor_area_ratio %}<div class="r-cell"><span class="r-label">기준용적률</span><span class="r-value">{{ ext.base_floor_area_ratio }}</span></div>{% endif %}
-                {% if ext.allowed_floor_area_ratio %}<div class="r-cell"><span class="r-label">허용용적률</span><span class="r-value">{{ ext.allowed_floor_area_ratio }}</span></div>{% endif %}
-                {% if ext.max_floor_area_ratio %}<div class="r-cell"><span class="r-label">상한용적률</span><span class="r-value">{{ ext.max_floor_area_ratio }}</span></div>{% endif %}
-                {% if ext.floor_area_ratio and not ext.base_floor_area_ratio %}<div class="r-cell"><span class="r-label">용적률</span><span class="r-value">{{ ext.floor_area_ratio }}</span></div>{% endif %}
-                {% if ext.max_height_meters %}<div class="r-cell"><span class="r-label">최고높이</span><span class="r-value">{{ ext.max_height_meters }}m</span></div>{% endif %}
-                {% if ext.max_floors %}<div class="r-cell"><span class="r-label">최고층수</span><span class="r-value">{{ ext.max_floors }}층</span></div>{% endif %}
-              </div>
-              {% endif %}
+              {# 7개 카테고리 #}
+              {% set has_cat1 = ext.allowed_uses or ext.prohibited_uses %}
+              {% set has_cat2 = ext.use_ratios %}
+              {% set has_cat3 = ext.base_floor_area_ratio or ext.allowed_floor_area_ratio or ext.max_floor_area_ratio or ext.floor_area_ratio %}
+              {% set has_cat4 = ext.far_incentive_conditions %}
+              {% set has_cat5 = ext.building_coverage_ratio %}
+              {% set has_cat6 = ext.max_height_meters or ext.max_floors or ext.height_restrictions_detail %}
+              {% set has_cat7 = ext.construction_restrictions or ext.development_restrictions or ext.setback_requirements or ext.other_notes %}
+              {% set has_any = has_cat1 or has_cat2 or has_cat3 or has_cat4 or has_cat5 or has_cat6 or has_cat7 %}
 
-              {# ② 높이 상세 #}
-              {% if ext.height_restrictions_detail %}
-              <div class="ai-detail-box">
-                <strong>높이제한 상세:</strong> {{ ext.height_restrictions_detail }}
-              </div>
-              {% endif %}
+              {% if has_any %}
+              <div class="ai-categories">
 
-              {# ③ 용적률 완화 조건 #}
-              {% if ext.far_incentive_conditions %}
-              <div class="ai-detail-box ai-incentive-box">
-                <strong>용적률 완화 조건:</strong>
-                <ul>{% for c in ext.far_incentive_conditions %}<li>{{ c }}</li>{% endfor %}</ul>
-              </div>
-              {% endif %}
-
-              {# ④ 허용/불허 용도 #}
-              {% if ext.allowed_uses or ext.prohibited_uses %}
-              <div class="use-restrictions">
-                {% if ext.allowed_uses %}
-                <div class="use-box use-allowed">
-                  <strong>허용 용도:</strong> {{ ext.allowed_uses | join(', ') }}
+                {% if has_cat1 %}
+                <div class="ai-cat">
+                  <div class="ai-cat-header"><span class="ai-cat-num">1</span><span class="ai-cat-title">불허/허용 용도</span></div>
+                  <div class="ai-cat-body">
+                    {% if ext.allowed_uses %}<div class="use-box use-allowed"><strong>허용 용도:</strong> {{ ext.allowed_uses | join(', ') }}</div>{% endif %}
+                    {% if ext.prohibited_uses %}<div class="use-box use-prohibited"><strong>불허 용도:</strong> {{ ext.prohibited_uses | join(', ') }}</div>{% endif %}
+                  </div>
                 </div>
                 {% endif %}
-                {% if ext.prohibited_uses %}
-                <div class="use-box use-prohibited">
-                  <strong>불허 용도:</strong> {{ ext.prohibited_uses | join(', ') }}
+
+                {% if has_cat2 %}
+                <div class="ai-cat">
+                  <div class="ai-cat-header"><span class="ai-cat-num">2</span><span class="ai-cat-title">건축물 용도비율</span></div>
+                  <div class="ai-cat-body">
+                    <ul>{% for r in ext.use_ratios %}<li>{{ r }}</li>{% endfor %}</ul>
+                  </div>
                 </div>
                 {% endif %}
-              </div>
-              {% endif %}
 
-              {# ⑤ 용도별 비율 #}
-              {% if ext.use_ratios %}
-              <div class="ai-detail-box">
-                <strong>용도별 비율:</strong>
-                <ul>{% for r in ext.use_ratios %}<li>{{ r }}</li>{% endfor %}</ul>
-              </div>
-              {% endif %}
-
-              {# ⑥ 건축/개발 제한사항 #}
-              {% if ext.development_restrictions or ext.construction_restrictions %}
-              <div class="ai-detail-box ai-restrict-box">
-                {% if ext.construction_restrictions %}
-                <strong>건축 제한:</strong>
-                <ul>{% for r in ext.construction_restrictions %}<li>{{ r }}</li>{% endfor %}</ul>
+                {% if has_cat3 %}
+                <div class="ai-cat">
+                  <div class="ai-cat-header"><span class="ai-cat-num">3</span><span class="ai-cat-title">기준/허용/상한 용적률</span></div>
+                  <div class="ai-cat-body">
+                    <div class="restriction-grid">
+                      {% if ext.base_floor_area_ratio %}<div class="r-cell"><span class="r-label">기준용적률</span><span class="r-value">{{ ext.base_floor_area_ratio }}</span></div>{% endif %}
+                      {% if ext.allowed_floor_area_ratio %}<div class="r-cell"><span class="r-label">허용용적률</span><span class="r-value">{{ ext.allowed_floor_area_ratio }}</span></div>{% endif %}
+                      {% if ext.max_floor_area_ratio %}<div class="r-cell"><span class="r-label">상한용적률</span><span class="r-value">{{ ext.max_floor_area_ratio }}</span></div>{% endif %}
+                      {% if ext.floor_area_ratio and not ext.base_floor_area_ratio %}<div class="r-cell"><span class="r-label">용적률</span><span class="r-value">{{ ext.floor_area_ratio }}</span></div>{% endif %}
+                    </div>
+                  </div>
+                </div>
                 {% endif %}
-                {% if ext.development_restrictions %}
-                <strong>개발 제한:</strong>
-                <ul>{% for r in ext.development_restrictions %}<li>{{ r }}</li>{% endfor %}</ul>
+
+                {% if has_cat4 %}
+                <div class="ai-cat">
+                  <div class="ai-cat-header"><span class="ai-cat-num">4</span><span class="ai-cat-title">용적률 완화 조건</span></div>
+                  <div class="ai-cat-body">
+                    <ul>{% for c in ext.far_incentive_conditions %}<li>{{ c }}</li>{% endfor %}</ul>
+                  </div>
+                </div>
                 {% endif %}
+
+                {% if has_cat5 %}
+                <div class="ai-cat">
+                  <div class="ai-cat-header"><span class="ai-cat-num">5</span><span class="ai-cat-title">건폐율</span></div>
+                  <div class="ai-cat-body">
+                    <div class="restriction-grid">
+                      <div class="r-cell"><span class="r-label">건폐율</span><span class="r-value">{{ ext.building_coverage_ratio }}</span></div>
+                    </div>
+                  </div>
+                </div>
+                {% endif %}
+
+                {% if has_cat6 %}
+                <div class="ai-cat">
+                  <div class="ai-cat-header"><span class="ai-cat-num">6</span><span class="ai-cat-title">높이제한</span></div>
+                  <div class="ai-cat-body">
+                    {% if ext.max_height_meters or ext.max_floors %}
+                    <div class="restriction-grid">
+                      {% if ext.max_height_meters %}<div class="r-cell"><span class="r-label">최고높이</span><span class="r-value">{{ ext.max_height_meters }}m</span></div>{% endif %}
+                      {% if ext.max_floors %}<div class="r-cell"><span class="r-label">최고층수</span><span class="r-value">{{ ext.max_floors }}층</span></div>{% endif %}
+                    </div>
+                    {% endif %}
+                    {% if ext.height_restrictions_detail %}<p style="margin:4px 0 0">{{ ext.height_restrictions_detail }}</p>{% endif %}
+                  </div>
+                </div>
+                {% endif %}
+
+                {% if has_cat7 %}
+                <div class="ai-cat">
+                  <div class="ai-cat-header"><span class="ai-cat-num">7</span><span class="ai-cat-title">그 밖의 건축/개발 제한사항</span></div>
+                  <div class="ai-cat-body">
+                    {% if ext.construction_restrictions %}<strong>건축 제한:</strong><ul>{% for r in ext.construction_restrictions %}<li>{{ r }}</li>{% endfor %}</ul>{% endif %}
+                    {% if ext.development_restrictions %}<strong>개발 제한:</strong><ul>{% for r in ext.development_restrictions %}<li>{{ r }}</li>{% endfor %}</ul>{% endif %}
+                    {% if ext.setback_requirements %}<strong>이격거리/건축선:</strong><p style="margin:0">{{ ext.setback_requirements }}</p>{% endif %}
+                    {% if ext.other_notes %}<strong>기타:</strong><ul>{% for n in ext.other_notes %}<li>{{ n }}</li>{% endfor %}</ul>{% endif %}
+                  </div>
+                </div>
+                {% endif %}
+
               </div>
+              {% else %}
+              <p class="ai-no-data">상세 건축 제한사항이 추출되지 않았습니다.</p>
               {% endif %}
 
-              {# ⑦ 주요 변경사항 #}
+              {# 주요 변경사항 (번호 없음) #}
               {% if ext.key_changes %}
-              <div class="changes-box">
+              <div class="changes-box" style="margin-top:10px">
                 <strong>주요 변경:</strong>
                 <ul>{% for c in ext.key_changes %}<li>{{ c }}</li>{% endfor %}</ul>
-              </div>
-              {% endif %}
-
-              {# ⑧ 기타사항 #}
-              {% if ext.other_notes %}
-              <div class="ai-detail-box">
-                <strong>기타사항:</strong>
-                <ul>{% for n in ext.other_notes %}<li>{{ n }}</li>{% endfor %}</ul>
               </div>
               {% endif %}
 
@@ -532,40 +555,67 @@
               html += '<span class="ai-conf ' + confClass + '">' + confText + '</span>';
               html += '<span class="ai-src-label">' + srcLabel + '</span></div>';
               if (data.summary_korean) html += '<p class="ai-summary-text">' + data.summary_korean + '</p>';
-              // ① 건폐율/용적률/높이 그리드
-              var hasNums = data.building_coverage_ratio || data.base_floor_area_ratio || data.allowed_floor_area_ratio || data.max_floor_area_ratio || data.floor_area_ratio || data.max_height_meters || data.max_floors;
-              if (hasNums) {
-                html += '<div class="restriction-grid">';
-                if (data.building_coverage_ratio) html += '<div class="r-cell"><span class="r-label">건폐율</span><span class="r-value">' + data.building_coverage_ratio + '</span></div>';
-                if (data.base_floor_area_ratio) html += '<div class="r-cell"><span class="r-label">기준용적률</span><span class="r-value">' + data.base_floor_area_ratio + '</span></div>';
-                if (data.allowed_floor_area_ratio) html += '<div class="r-cell"><span class="r-label">허용용적률</span><span class="r-value">' + data.allowed_floor_area_ratio + '</span></div>';
-                if (data.max_floor_area_ratio) html += '<div class="r-cell"><span class="r-label">상한용적률</span><span class="r-value">' + data.max_floor_area_ratio + '</span></div>';
-                if (data.floor_area_ratio && !data.base_floor_area_ratio) html += '<div class="r-cell"><span class="r-label">용적률</span><span class="r-value">' + data.floor_area_ratio + '</span></div>';
-                if (data.max_height_meters) html += '<div class="r-cell"><span class="r-label">최고높이</span><span class="r-value">' + data.max_height_meters + 'm</span></div>';
-                if (data.max_floors) html += '<div class="r-cell"><span class="r-label">최고층수</span><span class="r-value">' + data.max_floors + '층</span></div>';
-                html += '</div>';
+              // 7개 카테고리 헬퍼
+              function catBlock(num, title, body) {
+                return '<div class="ai-cat"><div class="ai-cat-header"><span class="ai-cat-num">' + num + '</span><span class="ai-cat-title">' + title + '</span></div><div class="ai-cat-body">' + body + '</div></div>';
               }
-              // ② 높이 상세
-              if (data.height_restrictions_detail) html += '<div class="ai-detail-box"><strong>높이제한 상세:</strong> ' + data.height_restrictions_detail + '</div>';
-              // ③ 용적률 완화 조건
-              if (data.far_incentive_conditions && data.far_incentive_conditions.length) html += '<div class="ai-detail-box ai-incentive-box"><strong>용적률 완화 조건:</strong><ul>' + data.far_incentive_conditions.map(function(c){return '<li>'+c+'</li>';}).join('') + '</ul></div>';
-              // ④ 허용/불허 용도
-              if (data.allowed_uses && data.allowed_uses.length) html += '<div class="use-restrictions"><div class="use-box use-allowed"><strong>허용 용도:</strong> ' + data.allowed_uses.join(', ') + '</div></div>';
-              if (data.prohibited_uses && data.prohibited_uses.length) html += '<div class="use-restrictions"><div class="use-box use-prohibited"><strong>불허 용도:</strong> ' + data.prohibited_uses.join(', ') + '</div></div>';
-              // ⑤ 용도별 비율
-              if (data.use_ratios && data.use_ratios.length) html += '<div class="ai-detail-box"><strong>용도별 비율:</strong><ul>' + data.use_ratios.map(function(r){return '<li>'+r+'</li>';}).join('') + '</ul></div>';
-              // ⑥ 건축/개발 제한
-              var hasRestrict = (data.construction_restrictions && data.construction_restrictions.length) || (data.development_restrictions && data.development_restrictions.length);
-              if (hasRestrict) {
-                html += '<div class="ai-detail-box ai-restrict-box">';
-                if (data.construction_restrictions && data.construction_restrictions.length) html += '<strong>건축 제한:</strong><ul>' + data.construction_restrictions.map(function(r){return '<li>'+r+'</li>';}).join('') + '</ul>';
-                if (data.development_restrictions && data.development_restrictions.length) html += '<strong>개발 제한:</strong><ul>' + data.development_restrictions.map(function(r){return '<li>'+r+'</li>';}).join('') + '</ul>';
-                html += '</div>';
+              function listHtml(arr) { return '<ul>' + arr.map(function(x){return '<li>'+x+'</li>';}).join('') + '</ul>'; }
+              var cats = '';
+              // ① 불허/허용 용도
+              var hasCat1 = (data.allowed_uses && data.allowed_uses.length) || (data.prohibited_uses && data.prohibited_uses.length);
+              if (hasCat1) {
+                var b1 = '';
+                if (data.allowed_uses && data.allowed_uses.length) b1 += '<div class="use-box use-allowed"><strong>허용 용도:</strong> ' + data.allowed_uses.join(', ') + '</div>';
+                if (data.prohibited_uses && data.prohibited_uses.length) b1 += '<div class="use-box use-prohibited"><strong>불허 용도:</strong> ' + data.prohibited_uses.join(', ') + '</div>';
+                cats += catBlock(1, '불허/허용 용도', b1);
               }
-              // ⑦ 주요 변경
-              if (data.key_changes && data.key_changes.length) html += '<div class="changes-box"><strong>주요 변경:</strong><ul>' + data.key_changes.map(function(c){return '<li>'+c+'</li>';}).join('') + '</ul></div>';
-              // ⑧ 기타사항
-              if (data.other_notes && data.other_notes.length) html += '<div class="ai-detail-box"><strong>기타사항:</strong><ul>' + data.other_notes.map(function(n){return '<li>'+n+'</li>';}).join('') + '</ul></div>';
+              // ② 건축물 용도비율
+              if (data.use_ratios && data.use_ratios.length) cats += catBlock(2, '건축물 용도비율', listHtml(data.use_ratios));
+              // ③ 기준/허용/상한 용적률
+              var hasCat3 = data.base_floor_area_ratio || data.allowed_floor_area_ratio || data.max_floor_area_ratio || data.floor_area_ratio;
+              if (hasCat3) {
+                var b3 = '<div class="restriction-grid">';
+                if (data.base_floor_area_ratio) b3 += '<div class="r-cell"><span class="r-label">기준용적률</span><span class="r-value">' + data.base_floor_area_ratio + '</span></div>';
+                if (data.allowed_floor_area_ratio) b3 += '<div class="r-cell"><span class="r-label">허용용적률</span><span class="r-value">' + data.allowed_floor_area_ratio + '</span></div>';
+                if (data.max_floor_area_ratio) b3 += '<div class="r-cell"><span class="r-label">상한용적률</span><span class="r-value">' + data.max_floor_area_ratio + '</span></div>';
+                if (data.floor_area_ratio && !data.base_floor_area_ratio) b3 += '<div class="r-cell"><span class="r-label">용적률</span><span class="r-value">' + data.floor_area_ratio + '</span></div>';
+                b3 += '</div>';
+                cats += catBlock(3, '기준/허용/상한 용적률', b3);
+              }
+              // ④ 용적률 완화 조건
+              if (data.far_incentive_conditions && data.far_incentive_conditions.length) cats += catBlock(4, '용적률 완화 조건', listHtml(data.far_incentive_conditions));
+              // ⑤ 건폐율
+              if (data.building_coverage_ratio) cats += catBlock(5, '건폐율', '<div class="restriction-grid"><div class="r-cell"><span class="r-label">건폐율</span><span class="r-value">' + data.building_coverage_ratio + '</span></div></div>');
+              // ⑥ 높이제한
+              var hasCat6 = data.max_height_meters || data.max_floors || data.height_restrictions_detail;
+              if (hasCat6) {
+                var b6 = '';
+                if (data.max_height_meters || data.max_floors) {
+                  b6 += '<div class="restriction-grid">';
+                  if (data.max_height_meters) b6 += '<div class="r-cell"><span class="r-label">최고높이</span><span class="r-value">' + data.max_height_meters + 'm</span></div>';
+                  if (data.max_floors) b6 += '<div class="r-cell"><span class="r-label">최고층수</span><span class="r-value">' + data.max_floors + '층</span></div>';
+                  b6 += '</div>';
+                }
+                if (data.height_restrictions_detail) b6 += '<p style="margin:4px 0 0">' + data.height_restrictions_detail + '</p>';
+                cats += catBlock(6, '높이제한', b6);
+              }
+              // ⑦ 그 밖의 건축/개발 제한사항
+              var hasCat7 = (data.construction_restrictions && data.construction_restrictions.length) || (data.development_restrictions && data.development_restrictions.length) || data.setback_requirements || (data.other_notes && data.other_notes.length);
+              if (hasCat7) {
+                var b7 = '';
+                if (data.construction_restrictions && data.construction_restrictions.length) b7 += '<strong>건축 제한:</strong>' + listHtml(data.construction_restrictions);
+                if (data.development_restrictions && data.development_restrictions.length) b7 += '<strong>개발 제한:</strong>' + listHtml(data.development_restrictions);
+                if (data.setback_requirements) b7 += '<strong>이격거리/건축선:</strong><p style="margin:0">' + data.setback_requirements + '</p>';
+                if (data.other_notes && data.other_notes.length) b7 += '<strong>기타:</strong>' + listHtml(data.other_notes);
+                cats += catBlock(7, '그 밖의 건축/개발 제한사항', b7);
+              }
+              if (cats) {
+                html += '<div class="ai-categories">' + cats + '</div>';
+              } else {
+                html += '<p class="ai-no-data">상세 건축 제한사항이 추출되지 않았습니다.</p>';
+              }
+              // 주요 변경 (번호 없음)
+              if (data.key_changes && data.key_changes.length) html += '<div class="changes-box" style="margin-top:10px"><strong>주요 변경:</strong>' + listHtml(data.key_changes) + '</div>';
               if (data.gazette_number) html += '<div class="ai-meta">고시번호: ' + data.gazette_number + (data.announcement_date ? ' (' + data.announcement_date + ')' : '') + '</div>';
               el.className = 'ai-restriction-summary';
               el.innerHTML = html;

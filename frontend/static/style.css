@@ -824,6 +824,55 @@ a:hover { text-decoration: underline; }
   margin-top: 8px;
 }
 
+/* 7-category AI analysis layout */
+.ai-categories { display: flex; flex-direction: column; gap: 10px; }
+.ai-cat {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px;
+}
+.ai-cat-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.ai-cat-num {
+  width: 22px;
+  height: 22px;
+  background: #003087;
+  color: white;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.ai-cat-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+}
+.ai-cat-body {
+  font-size: 13px;
+  color: #334155;
+}
+.ai-cat-body ul { padding-left: 18px; margin: 4px 0 0; }
+.ai-cat-body li { margin-bottom: 2px; }
+.ai-cat-body strong { display: block; margin-bottom: 4px; color: #1e293b; }
+.ai-cat-body .restriction-grid { margin-bottom: 0; }
+.ai-cat-body .use-box { margin-bottom: 6px; }
+.ai-cat-body .use-box:last-child { margin-bottom: 0; }
+.ai-no-data {
+  text-align: center;
+  color: #94a3b8;
+  padding: 16px;
+  font-size: 13px;
+}
+
 /* announcement CN preview */
 .ann-cn-preview {
   font-size: 12px;
