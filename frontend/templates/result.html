@@ -463,19 +463,8 @@
         {# ── AI 분석 단일 패널 매크로 ── #}
         {% macro render_analysis_panel(ann) %}
         {% set ext = ann.structured_json %}
-        <div class="ai-tab-src">{{ ann.title[:60] }}{% if ann.title|length > 60 %}...{% endif %}</div>
-        {% if ext.summary_korean %}
-        <p class="ai-summary-text">{{ ext.summary_korean }}</p>
-        {% endif %}
-        {{ render_7categories(ext) }}
-        {% if ext.key_changes %}
-        <div class="changes-box" style="margin-top:10px">
-          <strong>주요 변경:</strong>
-          <ul>{% for c in ext.key_changes %}<li>{{ c }}</li>{% endfor %}</ul>
-        </div>
-        {% endif %}
         {% if ext.gazette_number %}
-        <div class="ai-meta">
+        <div class="ai-meta ai-meta-top">
           고시번호: {{ ext.gazette_number }}{% if ext.announcement_date %} ({{ ext.announcement_date }}){% endif %}
           {% if ext.confidence %}
           <span class="ai-conf {% if ext.confidence == 'high' %}conf-high{% elif ext.confidence == 'medium' %}conf-medium{% else %}conf-low{% endif %}">
@@ -485,6 +474,16 @@
           {% if ext._gazette_source %}
           <span class="ai-src-label">{{ ext._gazette_source }}</span>
           {% endif %}
+        </div>
+        {% endif %}
+        {% if ext.summary_korean %}
+        <p class="ai-summary-text">{{ ext.summary_korean }}</p>
+        {% endif %}
+        {{ render_7categories(ext) }}
+        {% if ext.key_changes %}
+        <div class="changes-box" style="margin-top:10px">
+          <strong>주요 변경:</strong>
+          <ul>{% for c in ext.key_changes %}<li>{{ c }}</li>{% endfor %}</ul>
         </div>
         {% endif %}
         {% endmacro %}
@@ -589,7 +588,11 @@
             var srcLabel = d._gazette_source || '고시공고';
             var confClass = d.confidence === 'high' ? 'conf-high' : (d.confidence === 'medium' ? 'conf-medium' : 'conf-low');
             var confText = d.confidence === 'high' ? '분석 충실도 높음' : (d.confidence === 'medium' ? '분석 충실도 보통' : '분석 충실도 낮음');
-            if (d.zone_name || d.ann_title) html += '<div class="ai-tab-src">' + ((d.zone_name || d.ann_title || '') + '').substring(0, 60) + '</div>';
+            if (d.gazette_number) {
+              html += '<div class="ai-meta ai-meta-top">고시번호: ' + d.gazette_number + (d.announcement_date ? ' (' + d.announcement_date + ')' : '');
+              html += ' <span class="ai-conf ' + confClass + '">' + confText + '</span>';
+              html += ' <span class="ai-src-label">' + srcLabel + '</span></div>';
+            }
             if (d.summary_korean) html += '<p class="ai-summary-text">' + d.summary_korean + '</p>';
             function catBlock(num, title, body) {
               return '<div class="ai-cat"><div class="ai-cat-header"><span class="ai-cat-num">' + num + '</span><span class="ai-cat-title">' + title + '</span></div><div class="ai-cat-body">' + body + '</div></div>';
@@ -643,11 +646,6 @@
               html += '<p class="ai-no-data">상세 건축 제한사항이 추출되지 않았습니다.</p>';
             }
             if (d.key_changes && d.key_changes.length) html += '<div class="changes-box" style="margin-top:10px"><strong>주요 변경:</strong>' + listHtml(d.key_changes) + '</div>';
-            if (d.gazette_number) {
-              html += '<div class="ai-meta">고시번호: ' + d.gazette_number + (d.announcement_date ? ' (' + d.announcement_date + ')' : '');
-              html += ' <span class="ai-conf ' + confClass + '">' + confText + '</span>';
-              html += ' <span class="ai-src-label">' + srcLabel + '</span></div>';
-            }
             return html;
           }
         })();

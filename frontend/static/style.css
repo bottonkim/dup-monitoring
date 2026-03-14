@@ -858,6 +858,9 @@ a:hover { text-decoration: underline; }
   color: #64748b;
   margin-bottom: 6px;
 }
+.ai-meta-top {
+  margin-bottom: 8px;
+}
 
 /* 7-category AI analysis layout */
 .ai-categories { display: flex; flex-direction: column; gap: 10px; }
