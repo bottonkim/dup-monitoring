@@ -752,6 +752,31 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
 
             yeolam_data = _build_tab(yeolam_ann, ext_yeolam)
             gyeoljeong_data = _build_tab(gyeoljeong_ann, ext_gyeoljeong)
+
+            # 결정고시 탭: UPIS 사업정보의 결정조서(DFL03) PDF 보강
+            if gyeoljeong_data and isinstance(upis_data, dict) and gyeoljeong_ann:
+                g_date = gyeoljeong_ann.get("published_at", "")
+                gh = upis_data.get("gazette_history", [])
+                # 1차: 선택된 결정고시와 날짜 매칭
+                for h in gh:
+                    if g_date and h.get("date") == g_date:
+                        for doc in h.get("drawing_documents", []):
+                            if doc.get("code") in ("DFL03", "DFL01") and doc.get("download_url"):
+                                url = doc["download_url"]
+                                if url not in gyeoljeong_data["pdf_urls"]:
+                                    gyeoljeong_data["pdf_urls"].append(url)
+                        break
+                # 2차: 날짜 매칭 실패 시, 파일명에 구역 키워드 포함된 최신 DFL03
+                if not any(u for u in gyeoljeong_data["pdf_urls"] if "결정조서" in u or "DFL03" in u):
+                    for h in gh:
+                        for doc in h.get("drawing_documents", []):
+                            if doc.get("code") == "DFL03" and doc.get("download_url"):
+                                if primary_kw and primary_kw in doc.get("name", ""):
+                                    gyeoljeong_data["pdf_urls"].append(doc["download_url"])
+                                    break
+                        if len(gyeoljeong_data["pdf_urls"]) > 0:
+                            break
+
             logger.info(f"[탭매칭] zone_core='{primary_zone_core}' | "
                         f"결정={gyeoljeong_ann.get('title','없음')[:60] if gyeoljeong_ann else '없음'} | "
                         f"열람={yeolam_ann.get('title','없음')[:60] if yeolam_ann else '없음'}")
