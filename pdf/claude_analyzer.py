@@ -191,7 +191,7 @@ def analyze_image_pdf(
 
     # 긴 PDF + zone_name 있으면 → 2단계 TOC 스캔
     target_pages = None
-    if zone_name and total_pages > 10:
+    if zone_name and total_pages > 6:
         target_pages = _find_pages_via_toc(
             pdf_path, zone_name, total_pages, client, model, convert_from_path
         )
@@ -199,7 +199,7 @@ def analyze_image_pdf(
     if target_pages:
         # 2단계: TOC에서 찾은 페이지만 분석
         logger.info(f"TOC 스캔 결과 → 페이지 {target_pages} 분석")
-        pages_to_analyze = target_pages[:max(max_pages, 8)]
+        pages_to_analyze = target_pages[:max(max_pages, 12)]
     else:
         # 기본: 첫 N페이지 분석
         pages_to_analyze = list(range(1, min(max_pages, total_pages or max_pages) + 1))

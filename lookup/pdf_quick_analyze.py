@@ -113,7 +113,7 @@ def analyze_small_pdf(
                     metadata={"title": title, "source": "첨부 PDF (이미지)", "published_at": ""},
                     api_key=api_key,
                     model=model,
-                    max_pages=5,
+                    max_pages=10,
                     zone_name=zone_name,
                 )
                 if result and not result.get("error"):
