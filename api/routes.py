@@ -601,8 +601,14 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
             district = addr_info.get("sggNm", "")
         fallback_zone_names = [district] if district else []
 
+        # 검색용 확장 키워드: "지구단위계획구역" → "지구단위계획"도 포함
+        search_zone_names = list(specific_zone_names)
+        for zn in specific_zone_names:
+            shorter = zn.replace("지구단위계획구역", "지구단위계획").strip()
+            if shorter != zn and shorter not in search_zone_names:
+                search_zone_names.append(shorter)
         announcements = get_announcements_for_zones(
-            specific_zone_names, conn, settings.seoul_api_key, settings.lookback_days
+            search_zone_names, conn, settings.seoul_api_key, settings.lookback_days
         )
         if not announcements and emd_zone_names:
             announcements = get_announcements_for_zones(
