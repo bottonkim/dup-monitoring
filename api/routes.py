@@ -651,7 +651,12 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
             ext_gyeoljeong = {"body": "", "title": "", "pdf_urls": []}
             for ext in seoul_notice_results + gu_results:
                 ext_cat = ext.get("category", "")
-                is_yeolam_ext = "열람" in ext_cat or ("공고" in ext_cat and "결정" not in ext_cat)
+                ext_title_str = ext.get("title", "")
+                # 구보는 category="구보"로 고정 → 본문 앞부분으로 열람/결정 판별
+                ext_body_head = ext.get("body", "")[:500] if ext_cat == "구보" else ""
+                is_yeolam_ext = ("열람" in ext_cat or ("공고" in ext_cat and "결정" not in ext_cat)
+                                 or "열람" in ext_title_str
+                                 or (ext_cat == "구보" and "열람" in ext_body_head))
                 bucket = ext_yeolam if is_yeolam_ext else ext_gyeoljeong
                 for u in (ext.get("pdf_urls") or []):
                     if u and u not in bucket["pdf_urls"]:
@@ -660,17 +665,23 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
                     bucket["body"] = ext["body"][:10000]
                     bucket["title"] = ext.get("title", "")
 
-            # primary_kw 추출
+            # primary_kw / primary_zone_core 추출
             primary_kw = ""
+            primary_zone_core = ""  # 구역명에서 접미사 제거 (예: "왕십리 광역중심")
             if primary_zone:
                 kw_tmp = primary_zone
                 for suffix in ["지구단위계획구역", "지구단위계획", "정비구역", "특별계획구역", "구역"]:
                     kw_tmp = kw_tmp.replace(suffix, "").strip()
+                primary_zone_core = kw_tmp
                 primary_kw = kw_tmp.split()[0] if kw_tmp.split() else ""
 
-            # 열람공고 / 결정고시 각각 최적 매칭
-            yeolam_matched, yeolam_fallback = None, None
-            gyeoljeong_matched, gyeoljeong_fallback = None, None
+            # 열람공고 / 결정고시 각각 최적 매칭 (4단계 우선순위)
+            # 1) core_focused: zone_core 포함 + 단독 고시 (합본 아님)
+            # 2) core_combined: zone_core 포함 + 합본 고시 (제목에 콤마)
+            # 3) kw_matched: primary_kw만 포함
+            # 4) fallback: 관련 카테고리이지만 키워드 미매칭
+            y_cf, y_cc, y_kw, y_fb = None, None, None, None
+            g_cf, g_cc, g_kw, g_fb = None, None, None, None
             for ann in result["announcements"]:
                 cat = ann.get("category", "")
                 title = ann.get("title", "")
@@ -681,19 +692,30 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
                 if (not cn and not title) or not primary_zone:
                     continue
                 is_yeolam = "열람" in cat or ("공고" in cat and "결정" not in cat) or "열람" in title
+                is_combined = "," in title  # 합본 고시 감지
                 if is_yeolam:
-                    if primary_kw and primary_kw in title and not yeolam_matched:
-                        yeolam_matched = ann
-                    elif not yeolam_fallback:
-                        yeolam_fallback = ann
+                    if primary_zone_core and primary_zone_core in title:
+                        if not is_combined and not y_cf:
+                            y_cf = ann
+                        elif is_combined and not y_cc:
+                            y_cc = ann
+                    elif primary_kw and primary_kw in title and not y_kw:
+                        y_kw = ann
+                    elif not y_fb:
+                        y_fb = ann
                 else:
-                    if primary_kw and primary_kw in title and not gyeoljeong_matched:
-                        gyeoljeong_matched = ann
-                    elif not gyeoljeong_fallback:
-                        gyeoljeong_fallback = ann
+                    if primary_zone_core and primary_zone_core in title:
+                        if not is_combined and not g_cf:
+                            g_cf = ann
+                        elif is_combined and not g_cc:
+                            g_cc = ann
+                    elif primary_kw and primary_kw in title and not g_kw:
+                        g_kw = ann
+                    elif not g_fb:
+                        g_fb = ann
 
-            yeolam_ann = yeolam_matched or yeolam_fallback
-            gyeoljeong_ann = gyeoljeong_matched or gyeoljeong_fallback
+            yeolam_ann = y_cf or y_cc or y_kw or y_fb
+            gyeoljeong_ann = g_cf or g_cc or g_kw or g_fb
 
             upis_ct = ""
             if isinstance(upis_data, dict):
