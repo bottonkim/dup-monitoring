@@ -615,10 +615,21 @@ a:hover { text-decoration: underline; }
 }
 .history-ref a:hover { text-decoration: underline; }
 .history-drw-badge {
-  display: inline-block;
-  margin-left: 6px;
-  font-size: 11px;
-  color: #6b7280;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 8px;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #2563eb;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+}
+.history-drw-badge:hover {
+  background: #dbeafe;
+  color: #1d4ed8;
 }
 
 /* 도면 리스트 */
