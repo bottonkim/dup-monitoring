@@ -883,7 +883,8 @@ def _enrich_history_from_ntfc_api(
         elif title and len(title) > 10:
             desc_detail = title
         else:
-            desc_detail = ""
+            # generic 제목이라도 없는 것보다 나으므로 표시
+            desc_detail = title or ""
 
         source_prefix = "서울특별시고시"
         if "구" in str(item.get("deptCode", "")):
