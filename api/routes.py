@@ -940,21 +940,26 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
             # 3) kw_matched: primary_kw만 포함
             # 4) fallback: 관련 카테고리이지만 키워드 미매칭
             import re as _re
-            # 검색 지번 추출 (예: "1383")
-            _searched_jibun = address.split()[-1] if address else ""
+            # 검색 지번에서 본번 추출 (예: "57-33" → "57", "1383" → "1383")
+            _searched_jibun_full = address.split()[-1] if address else ""
+            _searched_bobn = _searched_jibun_full.split("-")[0] if _searched_jibun_full else ""
             # 제목에 특정 지번이 명시된 고시 감지 (예: "숭인동 280번지 일대")
             _JIBUN_PAT = _re.compile(r'(\d{1,5})(?:-\d+)?(?:\s*번지|\s*일대)')
 
             def _is_different_parcel(title_str, content_str=""):
                 """제목/본문에 특정 지번이 있는데 검색 지번과 다르면 True"""
-                if not _searched_jibun:
+                if not _searched_bobn:
+                    return False
+                # 제목에 구역 핵심 키워드 포함 → 구역 전체 고시, 지번 필터 면제
+                if primary_zone_core and primary_zone_core in title_str:
                     return False
                 # 제목 + 본문 앞부분(500자)에서 지번 패턴 검색
                 check_text = title_str + " " + content_str[:500]
                 jibun_matches = _JIBUN_PAT.findall(check_text)
                 if not jibun_matches:
                     return False  # 지번 언급 없음 → 구역 전체 고시
-                return _searched_jibun not in jibun_matches
+                # 본번 기준 비교 (부번 무시: "57-20번지"와 "57-33"은 같은 블록)
+                return _searched_bobn not in jibun_matches
 
             y_cf, y_cc, y_kw, y_fb = None, None, None, None
             g_cf, g_cc, g_kw, g_fb = None, None, None, None
