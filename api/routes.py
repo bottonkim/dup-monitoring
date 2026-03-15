@@ -3,6 +3,7 @@ FastAPI 라우트 정의
 """
 import json
 import logging
+import re as _re_mod
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -24,6 +25,103 @@ templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 # CSS 캐시 버스터: style.css 수정 시각을 쿼리 파라미터로 사용
 _css_mtime = int((_STATIC_DIR / "style.css").stat().st_mtime)
 templates.env.globals["css_v"] = _css_mtime
+
+
+_GAZETTE_NO_PAT = _re_mod.compile(r'제?(\d{4}-\d+)호')
+
+
+def _source_label(source: str) -> str:
+    """고시공고 source 필드 → 사람이 읽기 쉬운 출처 라벨."""
+    if not source:
+        return "DB"
+    if "seoul_notice" in source:
+        return "서울시"
+    if "gu_" in source:
+        return "구청"
+    if "seoul_api" in source or "seoul_gazette" in source:
+        return "서울시보"
+    if "upis" in source:
+        return "UPIS"
+    return "DB"
+
+
+def _merge_ann_into_history(all_notifications: list, announcements: list):
+    """고시공고를 연혁에 고시번호 기준으로 병합 (출처 표기).
+
+    - 고시번호 매칭 → 기존 연혁 항목에 출처·URL·본문 추가
+    - 미매칭 고시공고 → 1번째(주요) zone의 연혁 끝에 추가
+    - 날짜순 재정렬
+    """
+    if not all_notifications:
+        return
+
+    # 각 announcement에서 고시번호 추출
+    for ann in announcements:
+        gno = ann.get("gazette_no", "")
+        if not gno:
+            m = _GAZETTE_NO_PAT.search(ann.get("title", ""))
+            if m:
+                gno = m.group(1)
+        ann["_gno"] = gno
+
+    # 지구단위계획 zone 우선, 없으면 첫번째
+    target_ntfc = None
+    for ntfc in all_notifications:
+        if ntfc.get("category_key") == "dstplanWtnnc":
+            target_ntfc = ntfc
+            break
+    if not target_ntfc:
+        target_ntfc = all_notifications[0]
+
+    primary_gh = target_ntfc.get("gazette_history", [])
+    existing_nos = {h.get("no", "") for h in primary_gh}
+    matched_ann_idx = set()
+
+    # 1) 기존 연혁 항목에 고시공고 매칭
+    for h in primary_gh:
+        h.setdefault("sources", ["UPIS"])
+        h_no = h.get("no", "")
+        if not h_no:
+            continue
+        for i, ann in enumerate(announcements):
+            if ann.get("_gno") == h_no and i not in matched_ann_idx:
+                src = _source_label(ann.get("source", ""))
+                if src not in h["sources"]:
+                    h["sources"].append(src)
+                h["ann_url"] = ann.get("url", "")
+                h["ann_source"] = ann.get("source", "")
+                h["ann_category"] = ann.get("category", "")
+                h["ann_title_full"] = ann.get("title", "")
+                h["ann_raw_content"] = (ann.get("raw_content") or "")[:300]
+                matched_ann_idx.add(i)
+                break
+
+    # 2) 미매칭 고시공고 → 새 항목으로 추가
+    for i, ann in enumerate(announcements):
+        if i in matched_ann_idx:
+            continue
+        gno = ann.get("_gno", "")
+        if gno and gno in existing_nos:
+            continue
+        src = _source_label(ann.get("source", ""))
+        entry = {
+            "no": gno,
+            "date": (ann.get("published_at") or "")[:10],
+            "desc": ann.get("category", "") or "고시",
+            "desc_detail": ann.get("title", ""),
+            "ann_url": ann.get("url", ""),
+            "ann_source": ann.get("source", ""),
+            "ann_category": ann.get("category", ""),
+            "ann_title_full": ann.get("title", ""),
+            "ann_raw_content": (ann.get("raw_content") or "")[:300],
+            "sources": [src],
+        }
+        primary_gh.append(entry)
+        if gno:
+            existing_nos.add(gno)
+
+    # 날짜순 재정렬 (최신 먼저)
+    primary_gh.sort(key=lambda x: x.get("date", ""), reverse=True)
 
 
 def create_app(settings, db_path: Path) -> FastAPI:
@@ -704,7 +802,11 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
         zone_names = specific_zone_names + fallback_zone_names
         result["announcements"] = [dict(a) if hasattr(a, "keys") else a for a in announcements]
 
-        # 5. 고시공고 structured_json 파싱 (DB 캐시된 것만, Claude 호출 없음)
+        # 5. 고시공고를 연혁에 병합 (출처 표기)
+        if result.get("all_notifications"):
+            _merge_ann_into_history(result["all_notifications"], result["announcements"])
+
+        # 5a. 고시공고 structured_json 파싱 (DB 캐시된 것만, Claude 호출 없음)
         for ann in result["announcements"]:
             if ann.get("structured_json") and isinstance(ann["structured_json"], str):
                 try:

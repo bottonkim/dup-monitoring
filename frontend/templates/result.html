@@ -255,7 +255,7 @@
       <section class="result-section">
         <h3 class="section-title">도시계획 결정 연혁</h3>
         <div class="history-notice-box">
-          <strong>※ 위 연혁은 전월 기준 자료입니다.</strong> 가장 최근 고시 내용은 아래 <a href="#latest-announcements">「최신 고시공고」</a> 섹션에서 반드시 확인하세요.
+          <strong>※ UPIS 연혁은 전월 기준 자료입니다.</strong> 최신 고시공고 검색 결과도 함께 표시됩니다. <span class="history-src history-src-UPIS">UPIS</span> <span class="history-src history-src-서울시">서울시</span> <span class="history-src history-src-구청">구청</span> 등 출처를 확인하세요.
         </div>
 
         {% if all_notifications %}
@@ -289,13 +289,19 @@
               <div class="history-head">
                 <span class="history-date">{{ h.date or '-' }}</span>
                 <span class="history-label">{{ h.desc or '결정(변경)' }}</span>
+                {% if h.sources is defined and h.sources %}
+                {% for src in h.sources %}<span class="history-src history-src-{{ src }}">{{ src }}</span>{% endfor %}
+                {% endif %}
               </div>
               {% if h.desc_detail %}
               <div class="history-detail">{{ h.desc_detail }}</div>
               {% elif h.title is defined and h.title %}
               <div class="history-detail">{{ h.title }}</div>
+              {% elif h.ann_title_full is defined and h.ann_title_full %}
+              <div class="history-detail">{{ h.ann_title_full }}</div>
               {% endif %}
               <div class="history-ref">
+                {% if h.no %}
                 {% set pdf_name = (h.source_prefix or '서울특별시고시') ~ '_제' ~ h.no ~ '호_고시.pdf' %}
                 {% if h.archive_url is defined and h.archive_url %}
                 <a href="{{ h.archive_url }}" target="_blank" rel="noopener">{{ pdf_name }} →</a>
@@ -303,6 +309,10 @@
                 <a href="https://urban.seoul.go.kr/view/html/PMNU4030100001?noticeCode={{ h.notice_code }}" target="_blank" rel="noopener">{{ pdf_name }} →</a>
                 {% else %}
                 {{ pdf_name }}
+                {% endif %}
+                {% endif %}
+                {% if h.ann_url is defined and h.ann_url %}
+                <a href="{{ h.ann_url }}" target="_blank" rel="noopener" class="btn-original-sm">원문 →</a>
                 {% endif %}
                 {% if h.drawing_documents is defined and h.drawing_documents %}
                 <span class="history-drw-badge" title="첨부파일 {{ h.drawing_documents|length }}건 (클릭하여 보기)" style="cursor:pointer" onclick="var d=this.nextElementSibling;d.style.display=d.style.display==='none'?'flex':'none'">📄{{ h.drawing_documents|length }}</span>
@@ -380,9 +390,8 @@
       </section>
       {% endif %}
 
-      <!-- ④ 최신 고시공고 + AI 분석 -->
-      <section class="result-section" id="latest-announcements">
-        <h3 class="section-title">최신 고시공고</h3>
+      <!-- ④ AI 건축 제한사항 분석 -->
+      <section class="result-section" id="ai-analysis">
         {% if announcements %}
 
 
@@ -962,35 +971,6 @@
         });
         </script>
 
-        {# 고시공고 목록 #}
-        <div class="ann-list">
-        {% for ann in announcements %}
-        <div class="announcement-card">
-          <div class="ann-header">
-            {% if ann.category %}<span class="badge badge-cat">{{ ann.category }}</span>{% endif %}
-            {% if ann.district %}<span class="badge badge-district">{{ ann.district }}</span>{% endif %}
-            {% if ann.published_at %}<span class="ann-date">{{ ann.published_at[:10] }}</span>{% endif %}
-            {% if ann.gazette_no %}<span class="ann-gazette">제{{ ann.gazette_no }}호</span>{% endif %}
-          </div>
-          <div class="ann-body">
-            <p class="ann-title-text">{{ ann.title }}</p>
-            {% if ann.raw_content and ann.raw_content|length > 30 %}
-            <p class="ann-cn-preview">{{ ann.raw_content[:200] }}{% if ann.raw_content|length > 200 %}...{% endif %}</p>
-            {% endif %}
-          </div>
-          {% if ann.url %}
-          <div class="ann-footer">
-            <a href="{{ ann.url }}" target="_blank" rel="noopener" class="btn-original">원문 보기 →</a>
-          </div>
-          {% endif %}
-        </div>
-        {% endfor %}
-        </div>
-        {% else %}
-        <div class="empty-state">
-          <p>관련 고시공고가 없습니다.</p>
-          <small>서버 시작 후 고시공고 데이터를 수집하고 있습니다. 잠시 후 다시 조회해주세요.</small>
-        </div>
         {% endif %}
       </section>
 
