@@ -176,7 +176,7 @@
         <div class="zones-list">
           {% for zone in zones %}
           {% set is_redevelopment = zone.layer in ('lt_c_ub011', 'lt_c_ub021') or '정비' in (zone.zone_type or '') or '재개발' in (zone.zone_type or '') or '재건축' in (zone.zone_type or '') %}
-          <div class="zone-card {% if is_redevelopment %}zone-card-redevelopment{% elif zone.layer != 'lt_c_uq111' %}zone-card-special{% endif %}">
+          <div class="zone-card {% if is_redevelopment %}zone-card-redevelopment{% elif zone.layer != 'lt_c_uq111' %}zone-card-special{% endif %}{% if loop.index > 10 %} zones-hidden{% endif %}">
             <div class="zone-header">
               <span class="zone-type-badge {% if is_redevelopment %}badge-redevelopment{% elif zone.layer != 'lt_c_uq111' %}badge-special{% endif %}">
                 {%- if zone.source == 'urban_seoul' and zone.zone_name -%}{{ zone.zone_name }}{%- else -%}{{ zone.zone_type }}{%- endif -%}
@@ -242,6 +242,9 @@
           </div>
           {% endfor %}
         </div>
+        {% if zones|length > 10 %}
+        <button class="history-toggle" onclick="this.previousElementSibling.classList.toggle('zones-expanded');this.textContent=this.textContent==='더보기 ▼'?'접기 ▲':'더보기 ▼'">더보기 ▼</button>
+        {% endif %}
         {% else %}
         <div class="empty-state"><p>VWORLD API 키가 없거나 지정된 구역이 없습니다.</p></div>
         {% endif %}
