@@ -48,6 +48,40 @@ GU_GAZETTE_CONFIGS = {
 }
 
 
+def _extract_inner_title(body: str, keyword: str) -> str:
+    """구보 본문에서 매칭된 키워드가 포함된 고시/공고 제목 추출.
+
+    구보는 여러 고시를 포함하므로, 키워드(구역명)가 포함된
+    고시/공고의 제목줄을 찾아 반환.
+    """
+    if not body or not keyword:
+        return ""
+
+    lines = [l.strip() for l in body.split("\n") if l.strip()]
+    _TITLE_KW = ("결정", "고시", "공고", "열람", "변경", "지정", "해제")
+
+    # 1차: 키워드 + 고시/공고 제목 키워드가 모두 포함된 줄
+    for line in lines:
+        if keyword in line and len(line) > 10 and any(t in line for t in _TITLE_KW):
+            clean = re.sub(r"^[○▪■◇◆●\-\s]+", "", line).strip()
+            if len(clean) > 10:
+                return clean[:200]
+
+    # 2차: 키워드 위치 앞쪽에서 가장 가까운 제목줄
+    kw_pos = body.find(keyword)
+    if kw_pos < 0:
+        return ""
+    pre = body[max(0, kw_pos - 500):kw_pos]
+    pre_lines = [l.strip() for l in pre.split("\n") if l.strip()]
+    for line in reversed(pre_lines):
+        if any(t in line for t in _TITLE_KW) and len(line) > 10:
+            clean = re.sub(r"^[○▪■◇◆●\-\s]+", "", line).strip()
+            if len(clean) > 10:
+                return clean[:200]
+
+    return ""
+
+
 def fetch_gu_gazette(
     sgg_nm: str,
     zone_keywords: list[str],
@@ -92,6 +126,10 @@ def fetch_gu_gazette(
                 logger.debug(f"  키워드 미매칭: {zone_keywords}")
                 continue
 
+            # 구보 내 해당 구역 고시/공고 제목 추출
+            inner = _extract_inner_title(body, matched_kw)
+            display_title = inner or cand["title"]
+
             # content_quality 판별
             quality = "summary"
             if sum(1 for dk in _DETAIL_KEYWORDS if dk in body) >= 2:
@@ -99,7 +137,7 @@ def fetch_gu_gazette(
 
             results.append({
                 "source": "gu_gazette",
-                "title": cand["title"],
+                "title": display_title,
                 "url": cand["detail_url"],
                 "published_at": cand["pub_date"],
                 "district": sgg_nm,

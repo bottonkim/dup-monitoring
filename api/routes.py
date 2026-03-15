@@ -1050,31 +1050,55 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
                 }
 
         # 5c. AI 분석 대상 고시 → 연혁에서 하이라이트
-        _ai_targets = []
-        if has_ai:
-            # 캐시된 AI: structured_json이 있는 고시
-            for ann in result["announcements"]:
-                sj = ann.get("structured_json")
-                if isinstance(sj, dict) and (sj.get("building_coverage_ratio") or sj.get("floor_area_ratio")):
-                    cat = ann.get("category", "")
-                    ttl = ann.get("title", "")
-                    is_y = "열람" in cat or ("공고" in cat and "결정" not in cat) or "열람" in ttl
-                    gno = ann.get("_gno", "") or ann.get("gazette_no", "")
-                    _ai_targets.append({"type": "열람공고" if is_y else "결정고시", "no": gno, "title": ttl})
-        else:
-            # 대기 중 AI: 탭 매칭된 고시
-            for label, ann_obj in [("결정고시", gyeoljeong_ann), ("열람공고", yeolam_ann)]:
-                if ann_obj:
-                    gno = ann_obj.get("_gno", "") or ann_obj.get("gazette_no", "")
-                    _ai_targets.append({"type": label, "no": gno, "title": ann_obj.get("title", "")})
-        if _ai_targets and result.get("all_notifications"):
-            for target in _ai_targets:
-                for ntfc in result["all_notifications"]:
-                    for h in ntfc.get("gazette_history", []):
-                        if target["no"] and h.get("no") == target["no"]:
-                            h["ai_target"] = target["type"]
-                        elif target["title"] and h.get("ann_title_full") == target["title"]:
-                            h["ai_target"] = target["type"]
+        # PDF URL 기반 매칭 (실제 분석 대상 PDF가 속한 gazette_history 항목)
+        def _mark_ai_targets_by_pdf(pdf_urls_set, label_str):
+            """pdf_urls로 gazette_history의 drawing_documents 매칭"""
+            found = False
+            if not pdf_urls_set:
+                return False
+            for ntfc in result["all_notifications"]:
+                for h in ntfc.get("gazette_history", []):
+                    for doc in h.get("drawing_documents", []):
+                        if doc.get("download_url") in pdf_urls_set:
+                            h["ai_target"] = label_str
+                            found = True
+                            break
+            return found
+
+        def _mark_ai_targets_by_ann(gno_str, title_str, label_str):
+            """고시번호/제목으로 gazette_history 매칭 (폴백)"""
+            for ntfc in result["all_notifications"]:
+                for h in ntfc.get("gazette_history", []):
+                    if gno_str and h.get("no") == gno_str:
+                        h["ai_target"] = label_str
+                    elif title_str and h.get("ann_title_full") == title_str:
+                        h["ai_target"] = label_str
+
+        if result.get("all_notifications"):
+            if has_ai:
+                # 캐시된 AI: structured_json이 있는 고시
+                for ann in result["announcements"]:
+                    sj = ann.get("structured_json")
+                    if isinstance(sj, dict) and (sj.get("building_coverage_ratio") or sj.get("floor_area_ratio")):
+                        cat = ann.get("category", "")
+                        ttl = ann.get("title", "")
+                        is_y = "열람" in cat or ("공고" in cat and "결정" not in cat) or "열람" in ttl
+                        gno = ann.get("_gno", "") or ann.get("gazette_no", "")
+                        _mark_ai_targets_by_ann(gno, ttl, "열람공고" if is_y else "결정고시")
+            else:
+                # 대기 중 AI: _ai_pending_tabs의 pdf_urls로 실제 분석 대상 매칭
+                pending_tabs = result.get("_ai_pending_tabs", {})
+                for label, tab_key, ann_obj in [("결정고시", "gyeoljeong", gyeoljeong_ann),
+                                                 ("열람공고", "yeolam", yeolam_ann)]:
+                    tab_data = pending_tabs.get(tab_key)
+                    if not tab_data:
+                        continue
+                    pdf_set = set(tab_data.get("pdf_urls", []))
+                    if not _mark_ai_targets_by_pdf(pdf_set, label):
+                        # PDF URL 매칭 실패 → 고시공고 매칭 폴백
+                        if ann_obj:
+                            gno = ann_obj.get("_gno", "") or ann_obj.get("gazette_no", "")
+                            _mark_ai_targets_by_ann(gno, ann_obj.get("title", ""), label)
 
         # 조회 이력 저장
         log_lookup(conn, address, pnu, zone_names, result)
