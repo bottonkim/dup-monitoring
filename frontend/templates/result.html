@@ -546,23 +546,54 @@
 
         {# ── AI 분석 AJAX (캐시 없을 때) ── #}
         {% if _ai_pending_tabs and not (ns_tabs.yeolam or ns_tabs.gyeoljeong) %}
-        <div class="ai-restriction-summary ai-loading" id="aiResult">
+        <div class="ai-restriction-summary" id="aiResult">
           <div class="ai-header">
             <span class="ai-badge">AI 분석</span>
-            <span class="ai-source">건축 제한사항 분석 중...</span>
+            <span class="ai-source">건축 제한사항 분석</span>
           </div>
-          <div class="ai-spinner-wrap">
+          <div class="ai-mode-select" id="aiModeSelect">
+            <button class="ai-mode-btn ai-mode-auto" onclick="startAutoAnalysis()">자동 분석</button>
+            <button class="ai-mode-btn ai-mode-manual" onclick="startManualAnalysis()">직접 분석 (무료)</button>
+          </div>
+          {# 자동 분석 로딩 #}
+          <div class="ai-spinner-wrap" id="aiSpinner" style="display:none">
             <div class="ai-spinner"></div>
             <span>{% if _ai_pending_tabs.yeolam and _ai_pending_tabs.gyeoljeong %}열람공고와 결정고시를 분석하고 있습니다.{% else %}고시공고를 분석하고 있습니다.{% endif %} 잠시만 기다려주세요...</span>
           </div>
+          {# 직접 분석 UI #}
+          <div id="aiManualUI" style="display:none">
+            <div class="ai-manual-steps">
+              <div class="ai-manual-step">
+                <span class="ai-step-num">1</span>
+                <span>프롬프트를 복사하세요</span>
+                <div class="ai-manual-actions">
+                  <button class="ai-copy-btn" id="aiCopyBtn" onclick="copyPrompt()">프롬프트 복사</button>
+                  <a href="https://claude.ai/new" target="_blank" class="ai-link-btn">claude.ai 열기</a>
+                </div>
+                <div id="aiPromptStatus" class="ai-prompt-status"></div>
+              </div>
+              <div class="ai-manual-step">
+                <span class="ai-step-num">2</span>
+                <span>Claude의 응답(JSON)을 붙여넣으세요</span>
+                <textarea id="aiManualResult" class="ai-manual-textarea" rows="6" placeholder='{"zone_name": "...", "building_coverage_ratio": "...", ...}'></textarea>
+                <button class="ai-apply-btn" onclick="applyManualResult()">결과 적용</button>
+                <div id="aiManualError" class="ai-manual-error"></div>
+              </div>
+            </div>
+          </div>
         </div>
         <script>
-        (function() {
-          var pending = {{ _ai_pending_tabs | tojson }};
+        var _pending = {{ _ai_pending_tabs | tojson }};
+        var _manualPromptText = '';
+
+        function startAutoAnalysis() {
+          document.getElementById('aiModeSelect').style.display = 'none';
+          document.getElementById('aiManualUI').style.display = 'none';
+          document.getElementById('aiSpinner').style.display = 'flex';
           fetch('/api/analyze-gazette-tabs', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(pending)
+            body: JSON.stringify(_pending)
           })
           .then(function(r) { return r.json(); })
           .then(function(data) {
@@ -669,7 +700,69 @@
             if (d.key_changes && d.key_changes.length) html += '<div class="changes-box" style="margin-top:10px"><strong>주요 변경:</strong>' + listHtml(d.key_changes) + '</div>';
             return html;
           }
-        })();
+        }
+
+        function startManualAnalysis() {
+          document.getElementById('aiModeSelect').style.display = 'none';
+          document.getElementById('aiManualUI').style.display = 'block';
+          document.getElementById('aiPromptStatus').textContent = '프롬프트 생성 중...';
+          fetch('/api/build-analysis-prompt', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(_pending)
+          })
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            if (data.error) {
+              document.getElementById('aiPromptStatus').textContent = data.error;
+              return;
+            }
+            // 첫 번째 가용 프롬프트 사용
+            var keys = Object.keys(data.prompts);
+            _manualPromptText = data.prompts[keys[0]];
+            document.getElementById('aiPromptStatus').textContent = '프롬프트 준비 완료 (' + _manualPromptText.length.toLocaleString() + '자)';
+            document.getElementById('aiCopyBtn').disabled = false;
+          })
+          .catch(function() {
+            document.getElementById('aiPromptStatus').textContent = '프롬프트 생성 실패';
+          });
+        }
+
+        function copyPrompt() {
+          if (!_manualPromptText) return;
+          navigator.clipboard.writeText(_manualPromptText).then(function() {
+            document.getElementById('aiCopyBtn').textContent = '복사됨!';
+            setTimeout(function() { document.getElementById('aiCopyBtn').textContent = '프롬프트 복사'; }, 2000);
+          });
+        }
+
+        function applyManualResult() {
+          var raw = document.getElementById('aiManualResult').value.trim();
+          var errEl = document.getElementById('aiManualError');
+          if (!raw) { errEl.textContent = 'JSON을 붙여넣어주세요.'; return; }
+          // 마크다운 코드블록 제거
+          if (raw.startsWith('```')) {
+            raw = raw.replace(/^```json?\n?/, '').replace(/\n?```$/, '');
+          }
+          try {
+            var data = JSON.parse(raw);
+          } catch(e) {
+            errEl.textContent = 'JSON 파싱 실패: ' + e.message;
+            return;
+          }
+          errEl.textContent = '';
+          var el = document.getElementById('aiResult');
+          var html = '<div class="ai-header"><span class="ai-badge">AI 분석</span><span class="ai-source">건축 제한사항 요약</span></div>';
+          html += '<div class="ai-tab-label">직접 분석</div>' + buildTabHtml(data);
+          el.className = 'ai-restriction-summary';
+          el.innerHTML = html;
+          // 세부 구역 반영
+          if (data.sub_zone) {
+            document.querySelectorAll('.ai-sub-zone-slot').forEach(function(slot) {
+              slot.innerHTML = '<br><small class="zone-sub">\u21B3 ' + data.sub_zone + '</small>';
+            });
+          }
+        }
         </script>
         {% elif _ai_pending and not (ns_tabs.yeolam or ns_tabs.gyeoljeong) %}
         {# 하위 호환: 단일 분석 #}

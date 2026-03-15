@@ -866,6 +866,43 @@ a:hover { text-decoration: underline; }
 .ai-meta-top {
   margin-bottom: 8px;
 }
+/* 직접 분석 모드 */
+.ai-mode-select { display: flex; gap: 8px; margin-top: 10px; }
+.ai-mode-btn {
+  padding: 8px 20px; border-radius: 6px; font-size: 13px; font-weight: 600;
+  cursor: pointer; border: 1px solid #cbd5e1; background: #fff; color: #334155;
+  font-family: inherit; transition: all .15s;
+}
+.ai-mode-btn:hover { border-color: #003087; color: #003087; }
+.ai-mode-auto { background: #003087; color: #fff; border-color: #003087; }
+.ai-mode-auto:hover { background: #002060; }
+.ai-manual-steps { margin-top: 12px; }
+.ai-manual-step { margin-bottom: 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ai-step-num {
+  width: 22px; height: 22px; border-radius: 50%; background: #003087; color: #fff;
+  font-size: 12px; font-weight: 700; display: inline-flex; align-items: center;
+  justify-content: center; flex-shrink: 0;
+}
+.ai-manual-actions { display: flex; gap: 6px; width: 100%; margin-top: 4px; }
+.ai-copy-btn, .ai-apply-btn {
+  padding: 6px 14px; border-radius: 5px; font-size: 12px; font-weight: 600;
+  cursor: pointer; border: 1px solid #003087; background: #003087; color: #fff;
+  font-family: inherit;
+}
+.ai-copy-btn:hover, .ai-apply-btn:hover { background: #002060; }
+.ai-link-btn {
+  padding: 6px 14px; border-radius: 5px; font-size: 12px; font-weight: 600;
+  border: 1px solid #cbd5e1; background: #fff; color: #334155; text-decoration: none;
+}
+.ai-link-btn:hover { border-color: #003087; color: #003087; }
+.ai-prompt-status { width: 100%; font-size: 12px; color: #64748b; margin-top: 2px; }
+.ai-manual-textarea {
+  width: 100%; margin-top: 4px; padding: 8px; border: 1px solid #cbd5e1;
+  border-radius: 6px; font-size: 12px; font-family: 'Consolas', monospace;
+  resize: vertical; min-height: 80px;
+}
+.ai-manual-textarea:focus { outline: none; border-color: #003087; }
+.ai-manual-error { width: 100%; font-size: 12px; color: #dc2626; margin-top: 4px; }
 
 /* 7-category AI analysis layout */
 .ai-categories { display: flex; flex-direction: column; gap: 10px; }

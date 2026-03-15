@@ -240,21 +240,8 @@ def import_all_upis_announcements(api_key: str, db_path: Path, max_pages: int = 
 # Claude 분석: 결정고시 CN 내용 → 건축 제한 구조화
 # ---------------------------------------------------------------------------
 
-def analyze_announcement_with_claude(
-    title: str,
-    cn_content: str,
-    api_key: str,
-    model: str = "claude-sonnet-4-6",
-) -> dict:
-    """
-    결정고시/열람공고 CN 내용을 Claude로 분석하여 건축 제한 정보 추출.
-    CN이 짧아 건폐율/용적률 등 구체적 수치는 없을 수 있음 — 있는 정보만 추출.
-    """
-    try:
-        import anthropic
-    except ImportError:
-        return {"error": "anthropic 미설치"}
-
+def _build_prompt_parts(title: str, cn_content: str) -> tuple:
+    """시스템 프롬프트와 유저 프롬프트 반환 (API 호출 없이 프롬프트만 생성)"""
     system = """당신은 서울시 도시계획 문서를 전문으로 분석하는 한국어 도시계획 문서 분석가입니다.
 지구단위계획, 정비구역, 특별계획구역 등 서울시 공식 고시·공문서에서 핵심 정보를 정확하게 추출합니다.
 
@@ -274,7 +261,7 @@ def analyze_announcement_with_claude(
 제목: {title}
 
 내용:
-{cn_content}
+{cn_content[:10000]}
 
 아래 JSON 스키마에 따라 정보를 **빠짐없이** 추출하세요.
 각 항목은 문서에서 찾을 수 있는 한 반드시 채워야 합니다:
@@ -316,6 +303,31 @@ def analyze_announcement_with_claude(
 }}
 
 순수 JSON만 반환하세요."""
+    return system, prompt
+
+
+def build_analysis_prompt(title: str, cn_content: str) -> str:
+    """분석 프롬프트 전문 반환 (Claude API 미호출, 사용자가 직접 Claude에 붙여넣기용)"""
+    system, prompt = _build_prompt_parts(title, cn_content)
+    return system + "\n\n---\n\n" + prompt
+
+
+def analyze_announcement_with_claude(
+    title: str,
+    cn_content: str,
+    api_key: str,
+    model: str = "claude-sonnet-4-6",
+) -> dict:
+    """
+    결정고시/열람공고 CN 내용을 Claude로 분석하여 건축 제한 정보 추출.
+    CN이 짧아 건폐율/용적률 등 구체적 수치는 없을 수 있음 — 있는 정보만 추출.
+    """
+    try:
+        import anthropic
+    except ImportError:
+        return {"error": "anthropic 미설치"}
+
+    system, prompt = _build_prompt_parts(title, cn_content)
 
     try:
         client = anthropic.Anthropic(api_key=api_key)

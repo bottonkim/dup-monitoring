@@ -134,7 +134,49 @@ def create_app(settings, db_path: Path) -> FastAPI:
         )
         return JSONResponse(content=result)
 
+    @app.post("/api/build-analysis-prompt")
+    async def build_analysis_prompt_api(request: Request):
+        """직접 분석용 프롬프트 생성 (Claude API 미호출)"""
+        body = await request.json()
+        result = _build_prompt_from_body(body)
+        return JSONResponse(content=result)
+
     return app
+
+
+def _build_prompt_from_body(body: dict) -> dict:
+    """직접 분석용 프롬프트 생성 — 텍스트 콘텐츠에서 프롬프트만 반환 (Claude API 미호출)"""
+    from lookup.announcements import build_analysis_prompt
+
+    zone_name = body.get("zone_name", "")
+    sub_zone = body.get("sub_zone", "")
+    dong_jibun = body.get("dong_jibun", "")
+    upis_content = body.get("upis_content", "")
+
+    prompts = {}
+    for tab_key in ("gyeoljeong", "yeolam"):
+        tab = body.get(tab_key)
+        if not tab:
+            continue
+        ann_title = tab.get("ann_title", "")
+        ann_cn = tab.get("ann_cn", "")
+
+        # 분석 대상 정보 추가
+        focus_parts = []
+        if sub_zone:
+            focus_parts.append(sub_zone)
+        if dong_jibun:
+            focus_parts.append(f"필지: {dong_jibun}")
+        title = f"{ann_title} [분석 대상: {', '.join(focus_parts)}]" if focus_parts else ann_title
+
+        # 가용 텍스트 선택: ann_cn 우선, 없으면 upis_content
+        content = ann_cn if ann_cn and len(ann_cn) >= 10 else upis_content
+        if content and len(content) >= 10:
+            prompts[tab_key] = build_analysis_prompt(title, content)
+
+    if not prompts:
+        return {"error": "분석할 텍스트 콘텐츠가 없습니다. 자동 분석을 이용해주세요."}
+    return {"prompts": prompts}
 
 
 def _run_gazette_analysis(
