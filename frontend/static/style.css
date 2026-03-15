@@ -582,6 +582,14 @@ a:hover { text-decoration: underline; }
   flex-direction: column;
   gap: 0;
 }
+.history-hidden { display: none; }
+.history-expanded .history-hidden { display: flex; }
+.history-toggle {
+  background: none; border: 1px solid #cbd5e1; border-radius: 4px;
+  padding: 4px 14px; margin-top: 6px; font-size: 12px; color: #64748b;
+  cursor: pointer; font-family: inherit;
+}
+.history-toggle:hover { border-color: #003087; color: #003087; }
 .history-item {
   padding: 8px 0;
   border-bottom: 1px solid #f0f0f0;

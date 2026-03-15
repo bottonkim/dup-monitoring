@@ -279,10 +279,10 @@
 
           {# 지구단위계획 결정 및 변경 연혁 #}
           {% if ntfc.gazette_history %}
-          <h4 class="zone-sub-title">결정 및 변경 연혁</h4>
+          <h4 class="zone-sub-title">결정 및 변경 연혁 ({{ ntfc.gazette_history|length }}건)</h4>
           <div class="history-list">
             {% for h in ntfc.gazette_history %}
-            <div class="history-item{% if loop.first %} history-item-latest{% endif %}">
+            <div class="history-item{% if loop.first %} history-item-latest{% endif %}{% if loop.index > 5 %} history-hidden{% endif %}">
               <div class="history-head">
                 <span class="history-date">{{ h.date or '-' }}</span>
                 <span class="history-label">{{ h.desc or '결정(변경)' }}</span>
@@ -315,6 +315,9 @@
             </div>
             {% endfor %}
           </div>
+          {% if ntfc.gazette_history|length > 5 %}
+          <button class="history-toggle" onclick="this.previousElementSibling.classList.toggle('history-expanded');this.textContent=this.textContent==='더보기 ▼'?'접기 ▲':'더보기 ▼'">더보기 ▼</button>
+          {% endif %}
           {% endif %}
 
         </div>
@@ -345,7 +348,7 @@
         <h4 class="zone-sub-title">결정/변경 연혁 ({{ gazette_history|length }}건)</h4>
         <div class="history-list">
           {% for h in gazette_history %}
-          <div class="history-row{% if loop.first %} history-row-latest{% endif %}">
+          <div class="history-row{% if loop.first %} history-row-latest{% endif %}{% if loop.index > 5 %} history-hidden{% endif %}">
             <span class="history-date">{{ h.date or '-' }}</span>
             <span class="history-desc">{{ h.desc or '-' }}</span>
             <span class="history-ref">
@@ -358,6 +361,9 @@
           </div>
           {% endfor %}
         </div>
+        {% if gazette_history|length > 5 %}
+        <button class="history-toggle" onclick="this.previousElementSibling.classList.toggle('history-expanded');this.textContent=this.textContent==='더보기 ▼'?'접기 ▲':'더보기 ▼'">더보기 ▼</button>
+        {% endif %}
         {% endif %}
 
         {% endif %}
