@@ -884,6 +884,11 @@ a:hover { text-decoration: underline; }
   justify-content: center; flex-shrink: 0;
 }
 .ai-manual-actions { display: flex; gap: 6px; width: 100%; margin-top: 4px; }
+.ai-back-btn {
+  background: none; border: none; color: #64748b; font-size: 13px;
+  cursor: pointer; padding: 0 0 8px; font-family: inherit;
+}
+.ai-back-btn:hover { color: #003087; }
 .ai-copy-btn, .ai-apply-btn {
   padding: 6px 14px; border-radius: 5px; font-size: 12px; font-weight: 600;
   cursor: pointer; border: 1px solid #003087; background: #003087; color: #fff;

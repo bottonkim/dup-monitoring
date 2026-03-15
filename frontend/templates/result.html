@@ -562,6 +562,7 @@
           </div>
           {# 직접 분석 UI #}
           <div id="aiManualUI" style="display:none">
+            <button class="ai-back-btn" onclick="backToModeSelect()">← 분석 방법 선택</button>
             <div class="ai-manual-steps">
               <div class="ai-manual-step">
                 <span class="ai-step-num">1</span>
@@ -700,6 +701,11 @@
             if (d.key_changes && d.key_changes.length) html += '<div class="changes-box" style="margin-top:10px"><strong>주요 변경:</strong>' + listHtml(d.key_changes) + '</div>';
             return html;
           }
+        }
+
+        function backToModeSelect() {
+          document.getElementById('aiManualUI').style.display = 'none';
+          document.getElementById('aiModeSelect').style.display = '';
         }
 
         function startManualAnalysis() {
