@@ -552,8 +552,14 @@
             <span class="ai-source">건축 제한사항 분석</span>
           </div>
           <div class="ai-mode-select" id="aiModeSelect">
-            <button class="ai-mode-btn ai-mode-auto" onclick="startAutoAnalysis()">자동 분석</button>
-            <button class="ai-mode-btn ai-mode-manual" onclick="startManualAnalysis()">직접 분석 (무료)</button>
+            <div class="ai-mode-option">
+              <button class="ai-mode-btn ai-mode-auto" onclick="startAutoAnalysis()">자동 분석</button>
+              <span class="ai-mode-desc">API 자동 처리 · 빠르지만 표/서식 구조 손실 가능</span>
+            </div>
+            <div class="ai-mode-option">
+              <button class="ai-mode-btn ai-mode-manual" onclick="startManualAnalysis()">직접 분석 (무료)</button>
+              <span class="ai-mode-desc ai-mode-recommend">PDF 원본 첨부 가능 · 더 정확한 분석 결과</span>
+            </div>
           </div>
           {# 자동 분석 로딩 #}
           <div class="ai-spinner-wrap" id="aiSpinner" style="display:none">

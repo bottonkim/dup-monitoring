@@ -867,7 +867,8 @@ a:hover { text-decoration: underline; }
   margin-bottom: 8px;
 }
 /* 직접 분석 모드 */
-.ai-mode-select { display: flex; gap: 8px; margin-top: 10px; }
+.ai-mode-select { display: flex; gap: 12px; margin-top: 10px; }
+.ai-mode-option { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 .ai-mode-btn {
   padding: 8px 20px; border-radius: 6px; font-size: 13px; font-weight: 600;
   cursor: pointer; border: 1px solid #cbd5e1; background: #fff; color: #334155;
@@ -876,6 +877,8 @@ a:hover { text-decoration: underline; }
 .ai-mode-btn:hover { border-color: #003087; color: #003087; }
 .ai-mode-auto { background: #003087; color: #fff; border-color: #003087; }
 .ai-mode-auto:hover { background: #002060; }
+.ai-mode-desc { font-size: 11px; color: #94a3b8; padding-left: 2px; }
+.ai-mode-recommend { color: #059669; font-weight: 600; }
 .ai-manual-steps { margin-top: 12px; }
 .ai-manual-step { margin-bottom: 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .ai-step-num {
