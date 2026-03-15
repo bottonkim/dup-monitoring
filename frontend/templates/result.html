@@ -252,10 +252,10 @@
 
       <!-- ③ 도시계획 결정 연혁 (서울도시공간포털) -->
       {% if upis_notification or gazette_history or all_notifications %}
-      <section class="result-section">
+      <section class="result-section" id="history-section">
         <h3 class="section-title">도시계획 결정 연혁</h3>
         <div class="history-notice-box">
-          <strong>※ UPIS 연혁은 전월 기준 자료입니다.</strong> 최신 고시공고 검색 결과도 함께 표시됩니다. <span class="history-src history-src-UPIS">UPIS</span> <span class="history-src history-src-서울시">서울시</span> <span class="history-src history-src-구청">구청</span> 등 출처를 확인하세요.
+          <strong>※ 도시공간포털(UPIS) 연혁과 고시공고 검색 결과를 통합하여 표시합니다.</strong> 각 항목의 출처(<span class="history-src history-src-UPIS">UPIS</span> <span class="history-src history-src-서울시">서울시</span> <span class="history-src history-src-구청">구청</span> 등)를 참고하세요.
         </div>
 
         {% if all_notifications %}
@@ -291,6 +291,9 @@
                 <span class="history-label">{{ h.desc or '결정(변경)' }}</span>
                 {% if h.sources is defined and h.sources %}
                 {% for src in h.sources %}<span class="history-src history-src-{{ src }}">{{ src }}</span>{% endfor %}
+                {% endif %}
+                {% if h.ai_target is defined and h.ai_target %}
+                <span class="ai-target-badge">AI 분석 ({{ h.ai_target }})</span>
                 {% endif %}
               </div>
               {% if h.desc_detail %}
@@ -393,8 +396,6 @@
       <!-- ④ AI 건축 제한사항 분석 -->
       <section class="result-section" id="ai-analysis">
         {% if announcements %}
-
-
         {# ── AI 분석 매크로: 7개 카테고리 렌더링 ── #}
         {% macro render_7categories(ext) %}
         {% set has_cat1 = ext.allowed_uses or ext.prohibited_uses %}
@@ -982,5 +983,14 @@
     </footer>
   </div>
   <a href="/" class="floating-home" title="홈으로">&#8962;</a>
+  <script>
+  (function() {
+    var ai = document.getElementById('ai-analysis');
+    var hist = document.getElementById('history-section');
+    if (ai && hist && hist.parentNode) {
+      hist.parentNode.insertBefore(ai, hist);
+    }
+  })();
+  </script>
 </body>
 </html>

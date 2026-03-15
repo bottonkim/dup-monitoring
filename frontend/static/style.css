@@ -635,6 +635,28 @@ a:hover { text-decoration: underline; }
   color: #2563eb !important;
   margin-left: 6px;
 }
+/* AI 분석 대상 배지 */
+.ai-target-badge {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 8px;
+  font-weight: 700;
+  background: #ef4444;
+  color: #fff;
+  animation: ai-badge-pulse 2s ease-in-out infinite;
+  vertical-align: middle;
+}
+@keyframes ai-badge-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+.history-item:has(.ai-target-badge) {
+  background: #fef2f2;
+  margin: 0 -14px;
+  padding: 8px 14px;
+  border-radius: 4px;
+  border-left: 3px solid #ef4444;
+}
 .history-detail {
   margin: 3px 0 2px;
   padding-left: 0;

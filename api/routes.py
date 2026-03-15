@@ -815,6 +815,8 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
                     pass
 
         # 5b. AI 분석이 필요한 고시 정보를 결과에 포함 (클라이언트에서 AJAX로 요청)
+        yeolam_ann = None
+        gyeoljeong_ann = None
         has_ai = any(
             isinstance(a.get("structured_json"), dict)
             and (a["structured_json"].get("building_coverage_ratio") or a["structured_json"].get("floor_area_ratio"))
@@ -1046,6 +1048,33 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
                     "content_quality": compat_data["content_quality"],
                     "pdf_urls": compat_data["pdf_urls"],
                 }
+
+        # 5c. AI 분석 대상 고시 → 연혁에서 하이라이트
+        _ai_targets = []
+        if has_ai:
+            # 캐시된 AI: structured_json이 있는 고시
+            for ann in result["announcements"]:
+                sj = ann.get("structured_json")
+                if isinstance(sj, dict) and (sj.get("building_coverage_ratio") or sj.get("floor_area_ratio")):
+                    cat = ann.get("category", "")
+                    ttl = ann.get("title", "")
+                    is_y = "열람" in cat or ("공고" in cat and "결정" not in cat) or "열람" in ttl
+                    gno = ann.get("_gno", "") or ann.get("gazette_no", "")
+                    _ai_targets.append({"type": "열람공고" if is_y else "결정고시", "no": gno, "title": ttl})
+        else:
+            # 대기 중 AI: 탭 매칭된 고시
+            for label, ann_obj in [("결정고시", gyeoljeong_ann), ("열람공고", yeolam_ann)]:
+                if ann_obj:
+                    gno = ann_obj.get("_gno", "") or ann_obj.get("gazette_no", "")
+                    _ai_targets.append({"type": label, "no": gno, "title": ann_obj.get("title", "")})
+        if _ai_targets and result.get("all_notifications"):
+            for target in _ai_targets:
+                for ntfc in result["all_notifications"]:
+                    for h in ntfc.get("gazette_history", []):
+                        if target["no"] and h.get("no") == target["no"]:
+                            h["ai_target"] = target["type"]
+                        elif target["title"] and h.get("ann_title_full") == target["title"]:
+                            h["ai_target"] = target["type"]
 
         # 조회 이력 저장
         log_lookup(conn, address, pnu, zone_names, result)
