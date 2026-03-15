@@ -757,29 +757,36 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
             # sub_zone 미감지 시, 고시 제목/본문에서 세부 구역명 파싱
             if not sub_zone:
                 import re
+                # 다중 단어 세부구역명 지원 (예: "왕십리 오거리변 특별계획구역")
+                _SUB_KW_RE = r'(?:특별계획구역|세부개발계획|특별계획가능구역)'
                 _SUB_PAT = re.compile(
-                    r'(\S+\s*특별계획구역|\S+\s*세부개발계획|\S+\s*특별계획가능구역)'
+                    r'([\w]+(?:\s+[\w]+){0,2}\s*' + _SUB_KW_RE + r')'
                 )
+                _NOISE = ("및", "지구단위계획", "도시관리계획", "결정")
+
+                def _clean_sub(match_str: str) -> str:
+                    """매칭된 문자열에서 불필요한 접두사 제거"""
+                    s = match_str.strip()
+                    for noise in _NOISE:
+                        if s.startswith(noise + " "):
+                            s = s[len(noise):].strip()
+                    return s
+
                 for ann in [gyeoljeong_ann, yeolam_ann]:
                     if not ann:
                         continue
-                    # 제목에서 먼저 시도
-                    t = ann.get("title", "")
-                    m = _SUB_PAT.search(t)
-                    if m:
-                        cand = m.group(1).strip()
-                        # primary_zone 자체가 아닌 세부 구역만
-                        if cand != primary_zone and primary_zone_core not in cand:
-                            sub_zone = cand
-                            break
-                    # 본문 앞부분에서 시도
-                    body = (ann.get("raw_content") or ann.get("body") or "")[:3000]
-                    m = _SUB_PAT.search(body)
-                    if m:
-                        cand = m.group(1).strip()
-                        if cand != primary_zone and primary_zone_core not in cand:
-                            sub_zone = cand
-                            break
+                    for text in [ann.get("title", ""),
+                                 (ann.get("raw_content") or ann.get("body") or "")[:3000]]:
+                        if not text:
+                            continue
+                        m = _SUB_PAT.search(text)
+                        if m:
+                            cand = _clean_sub(m.group(1))
+                            if cand and cand != primary_zone and primary_zone_core not in cand:
+                                sub_zone = cand
+                                break
+                    if sub_zone:
+                        break
 
             # sub_zone → result에 포함 (Jinja2에서 즉시 표시)
             result["sub_zone"] = sub_zone
