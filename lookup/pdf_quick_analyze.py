@@ -45,13 +45,16 @@ def analyze_small_pdf(
     cache_dir.mkdir(parents=True, exist_ok=True)
     cache_path = cache_dir / f"{url_hash}_analysis.json"
 
+    from pdf.claude_analyzer import SCHEMA_VERSION
     if cache_path.exists():
         try:
             cached = json.loads(cache_path.read_text(encoding="utf-8"))
-            if cached and not cached.get("error"):
+            if cached and not cached.get("error") and cached.get("_schema_version") == SCHEMA_VERSION:
                 logger.info(f"PDF 분석 캐시 사용: {cache_path.name}")
                 cached["_gazette_source"] = "첨부 PDF (캐시)"
                 return cached
+            elif cached and cached.get("_schema_version") != SCHEMA_VERSION:
+                logger.info(f"PDF 분석 캐시 스키마 변경 → 재분석: {cache_path.name}")
         except Exception:
             pass
 
@@ -99,6 +102,7 @@ def analyze_small_pdf(
                 )
                 if result and not result.get("error"):
                     result["_gazette_source"] = "첨부 PDF"
+                    result["_schema_version"] = SCHEMA_VERSION
                     cache_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
                     return result
             except Exception as e:
@@ -118,6 +122,7 @@ def analyze_small_pdf(
                 )
                 if result and not result.get("error"):
                     result["_gazette_source"] = "첨부 PDF (이미지)"
+                    result["_schema_version"] = SCHEMA_VERSION
                     cache_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
                     return result
             except Exception as e:

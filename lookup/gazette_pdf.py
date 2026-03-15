@@ -48,13 +48,16 @@ def analyze_gazette_for_zone(
     ck = _cache_key(sibo_no, zone_name)
 
     # ── 캐시 1: Claude 분석 결과 ──
+    from pdf.claude_analyzer import SCHEMA_VERSION
     analysis_cache = pdf_cache_dir / f"{ck}_analysis.json"
     if analysis_cache.exists():
         try:
             cached = json.loads(analysis_cache.read_text(encoding="utf-8"))
-            if cached and not cached.get("error"):
+            if cached and not cached.get("error") and cached.get("_schema_version") == SCHEMA_VERSION:
                 logger.info(f"시보 분석 캐시 히트: {zone_name}")
                 return cached
+            elif cached and cached.get("_schema_version") != SCHEMA_VERSION:
+                logger.info(f"시보 분석 캐시 스키마 변경 → 재분석: {zone_name}")
         except Exception:
             pass
 
@@ -104,6 +107,7 @@ def analyze_gazette_for_zone(
 
     if result and not result.get("error"):
         result["_gazette_source"] = f"서울시보 제{sibo_no}호"
+        result["_schema_version"] = SCHEMA_VERSION
         logger.info(f"시보 분석 완료: {zone_name} → confidence={result.get('confidence')}")
         # 분석 결과 캐시 저장
         try:
