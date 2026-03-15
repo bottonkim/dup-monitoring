@@ -79,11 +79,9 @@
                   <td>
                     <strong>{{ zone.upis_name or zone.zone_name }}</strong>
                     {% if zone.upis_name and zone.upis_name != zone.zone_name %}<br><small class="zone-loc">{{ zone.zone_name }}</small>{% endif %}
-                    {# 세부 구역(특별계획구역 등)을 서브로 표시 #}
+                    {# 세부 구역(특별계획구역 등) — AI 분석 후 JS로 삽입 #}
                     {% if '지구단위' in (zone.upis_name or zone.zone_name or '') or '정비구역' in (zone.zone_type or '') %}
-                      {% for sz in zones if sz.layer == 'lt_c_ud502' and sz.zone_name %}
-                        <br><small class="zone-sub">↳ {{ sz.zone_name }}</small>
-                      {% endfor %}
+                      <span class="ai-sub-zone-slot"></span>
                     {% endif %}
                   </td>
                   <td>{% if zone.designated_year and zone.designated_year != '0000' %}{{ zone.designated_year }}년{% else %}—{% endif %}</td>
@@ -533,6 +531,17 @@
           {{ render_analysis_panel(ns_tabs.yeolam) }}
           {% endif %}
         </div>
+        {# 캐시된 AI 분석에서 세부 구역명 추출 → 토지 개요에 삽입 #}
+        {% set cached_sub = (ns_tabs.gyeoljeong.structured_json.sub_zone if ns_tabs.gyeoljeong and ns_tabs.gyeoljeong.structured_json else none)
+                         or (ns_tabs.yeolam.structured_json.sub_zone if ns_tabs.yeolam and ns_tabs.yeolam.structured_json else none) %}
+        {% if cached_sub %}
+        <script>
+        (function() {
+          var slots = document.querySelectorAll('.ai-sub-zone-slot');
+          slots.forEach(function(slot) { slot.innerHTML = '<br><small class="zone-sub">\u21B3 {{ cached_sub }}</small>'; });
+        })();
+        </script>
+        {% endif %}
         {% endif %}
 
         {# ── AI 분석 AJAX (캐시 없을 때) ── #}
@@ -584,6 +593,12 @@
             }
             el.className = 'ai-restriction-summary';
             el.innerHTML = html;
+            // AI 분석 결과에서 세부 구역명 추출 → 토지 개요에 삽입
+            var subZone = (hasG && data.gyeoljeong.sub_zone) || (hasY && data.yeolam.sub_zone) || '';
+            if (subZone) {
+              var slots = document.querySelectorAll('.ai-sub-zone-slot');
+              slots.forEach(function(slot) { slot.innerHTML = '<br><small class="zone-sub">\u21B3 ' + subZone + '</small>'; });
+            }
           })
           .catch(function() {
             var el = document.getElementById('aiResult');
@@ -755,6 +770,11 @@
               if (data.gazette_number) html += '<div class="ai-meta">고시번호: ' + data.gazette_number + (data.announcement_date ? ' (' + data.announcement_date + ')' : '') + '</div>';
               el.className = 'ai-restriction-summary';
               el.innerHTML = html;
+              // AI 분석 결과에서 세부 구역명 추출 → 토지 개요에 삽입
+              if (data.sub_zone) {
+                var slots = document.querySelectorAll('.ai-sub-zone-slot');
+                slots.forEach(function(slot) { slot.innerHTML = '<br><small class="zone-sub">\u21B3 ' + data.sub_zone + '</small>'; });
+              }
             })
             .catch(function() {
               var el = document.getElementById('aiResult');
