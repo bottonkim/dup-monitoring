@@ -157,6 +157,7 @@ def _run_gazette_analysis_tabs(body: dict, settings) -> dict:
     """열람공고/결정고시 두 건 순차 분석 (세마포어 1회 acquire)"""
     zone_name = body.get("zone_name", "")
     sub_zone = body.get("sub_zone", "")
+    dong_jibun = body.get("dong_jibun", "")
     upis_content = body.get("upis_content", "")
     yeolam = body.get("yeolam")
     gyeoljeong = body.get("gyeoljeong")
@@ -170,14 +171,16 @@ def _run_gazette_analysis_tabs(body: dict, settings) -> dict:
                 zone_name, gyeoljeong.get("gazette_ref", ""),
                 gyeoljeong.get("ann_title", ""), gyeoljeong.get("ann_cn", ""),
                 upis_content, gyeoljeong.get("content_quality", "summary"),
-                gyeoljeong.get("pdf_urls", []), settings, sub_zone=sub_zone,
+                gyeoljeong.get("pdf_urls", []), settings,
+                sub_zone=sub_zone, dong_jibun=dong_jibun,
             )
         if yeolam:
             result["yeolam"] = _run_gazette_analysis_inner(
                 zone_name, yeolam.get("gazette_ref", ""),
                 yeolam.get("ann_title", ""), yeolam.get("ann_cn", ""),
                 upis_content, yeolam.get("content_quality", "summary"),
-                yeolam.get("pdf_urls", []), settings, sub_zone=sub_zone,
+                yeolam.get("pdf_urls", []), settings,
+                sub_zone=sub_zone, dong_jibun=dong_jibun,
             )
         return result
     finally:
@@ -189,6 +192,7 @@ def _run_gazette_analysis_inner(
     zone_name: str, gazette_ref: str, ann_title: str, ann_cn: str,
     upis_content: str, content_quality: str, pdf_urls: list, settings,
     sub_zone: str = "",
+    dong_jibun: str = "",
 ) -> dict:
     """AI 분석 6단계 폴백 — 시보 PDF는 최후 수단.
     1. ann_cn (detailed) — 서울시 고시 상세페이지 본문 등
@@ -222,9 +226,14 @@ def _run_gazette_analysis_inner(
     def _try_claude(title: str, content: str, source_label: str) -> dict | None:
         if not content or len(content) < 10:
             return None
-        # 세부 구역(특별계획구역 등)이 있으면 해당 구역 집중 분석 지시
-        if sub_zone and sub_zone not in title:
-            title = f"{title} [분석 대상: {sub_zone}]"
+        # 세부 구역/필지 정보 → AI가 결정조서에서 해당 구역 집중 추출
+        focus_parts = []
+        if sub_zone:
+            focus_parts.append(sub_zone)
+        if dong_jibun:
+            focus_parts.append(f"필지: {dong_jibun}")
+        if focus_parts and not any(p in title for p in focus_parts):
+            title = f"{title} [분석 대상: {', '.join(focus_parts)}]"
         try:
             analysis = analyze_announcement_with_claude(
                 title, content,
@@ -658,12 +667,22 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
                     primary_zone = n
                     break
 
-            # 세부 구역명 (특별계획구역 등) — AI 분석 시 해당 구역 집중 추출용
+            # 세부 구역명 (특별계획구역/가구/지구 등) — AI 분석 시 해당 구역 집중 추출용
             sub_zone = ""
+            _SUB_KW = ("특별계획구역", "세부개발계획", "가구", "획지")
             for n in specific_zone_names:
-                if "특별계획구역" in n or "세부개발계획" in n:
+                if n == primary_zone:
+                    continue
+                if any(k in n for k in _SUB_KW):
                     sub_zone = n
                     break
+            # 세부 구역 못 찾았으면, primary_zone 외 다른 구역명 중
+            # 같은 지명 포함된 것 (예: 같은 지구단위 내 소분류)
+            if not sub_zone and primary_zone_core:
+                for n in specific_zone_names:
+                    if n != primary_zone and primary_zone_core.split()[0] in n:
+                        sub_zone = n
+                        break
 
             # 외부 소스에서 카테고리별 본문 + PDF URL 수집 (탭별 분리)
             ext_yeolam = {"body": "", "title": "", "pdf_urls": []}
@@ -795,9 +814,12 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
                         f"열람={yeolam_ann.get('title','없음')[:60] if yeolam_ann else '없음'}")
 
             if yeolam_data or gyeoljeong_data:
+                # 동+지번 (예: "도선동 39-2") — AI가 결정조서에서 해당 필지 구역 식별용
+                dong_jibun = f"{emd_nm} {address.split()[-1]}" if emd_nm else address
                 result["_ai_pending_tabs"] = {
                     "zone_name": primary_zone,
                     "sub_zone": sub_zone,
+                    "dong_jibun": dong_jibun,
                     "upis_content": upis_ct[:10000],
                     "yeolam": yeolam_data,
                     "gyeoljeong": gyeoljeong_data,

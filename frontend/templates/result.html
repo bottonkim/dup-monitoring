@@ -79,14 +79,21 @@
                   <td>
                     <strong>{{ zone.upis_name or zone.zone_name }}</strong>
                     {% if zone.upis_name and zone.upis_name != zone.zone_name %}<br><small class="zone-loc">{{ zone.zone_name }}</small>{% endif %}
+                    {# 세부 구역(특별계획구역 등)을 서브로 표시 #}
+                    {% if '지구단위' in (zone.upis_name or zone.zone_name or '') or '정비구역' in (zone.zone_type or '') %}
+                      {% for sz in zones if sz.layer == 'lt_c_ud502' and sz.zone_name %}
+                        <br><small class="zone-sub">↳ {{ sz.zone_name }}</small>
+                      {% endfor %}
+                    {% endif %}
                   </td>
                   <td>{% if zone.designated_year and zone.designated_year != '0000' %}{{ zone.designated_year }}년{% else %}—{% endif %}</td>
                   <td>{% if zone.gazette_number and zone.gazette_number != '0000' %}{{ zone.gazette_number }}{% else %}—{% endif %}</td>
                 </tr>
               {% endif %}
             {% endfor %}
-            {# 다른 법령 구역 #}
+            {# 다른 법령 구역 (특별계획구역은 국토계획법 섹션에서 서브로 표시됨 → 중복 제거) #}
             {% for zone in zones %}
+              {% if zone.layer == 'lt_c_ud502' %}{% continue %}{% endif %}
               {% if zone.law_category == '다른 법령' or zone.source == 'urban_seoul' %}
                 {% if not ns.other_printed %}
                   {% set ns.other_printed = true %}

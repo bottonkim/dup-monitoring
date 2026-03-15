@@ -690,6 +690,11 @@ a:hover { text-decoration: underline; }
   color: #666;
   font-size: 12px;
 }
+.zone-sub {
+  color: #1e40af;
+  font-size: 12px;
+  font-weight: 500;
+}
 
 /* ===== 고시공고 목록 ===== */
 .ann-list { display: flex; flex-direction: column; gap: 0; }
