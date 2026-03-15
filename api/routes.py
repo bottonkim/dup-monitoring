@@ -7,6 +7,7 @@ import re as _re_mod
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from urllib.parse import unquote
 
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -1076,6 +1077,56 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
             # sub_zone → result에 포함 (Jinja2에서 즉시 표시)
             result["sub_zone"] = sub_zone
 
+            # DFL03 기반 AI 타겟 보정: 선택된 결정고시 날짜에 DFL03이 없으면,
+            # DFL03이 있는 gazette_history 엔트리를 AI 타겟으로 사용
+            # (정비구역 오버라이드 등으로 이미 DFL03이 있으면 스킵)
+            _existing_pdfs = gyeoljeong_ann.get("pdf_urls", []) if gyeoljeong_ann else []
+            _already_has_dfl03 = any(
+                "결정조서" in unquote(u) or "DFL03" in u for u in _existing_pdfs
+            )
+            if gyeoljeong_ann and isinstance(upis_data, dict) and not _already_has_dfl03:
+                _gh = upis_data.get("gazette_history", [])
+                _g_date = gyeoljeong_ann.get("published_at", "")
+                _has_dfl03 = False
+                for _h in _gh:
+                    if _g_date and _h.get("date") == _g_date:
+                        _has_dfl03 = any(
+                            d.get("code") == "DFL03"
+                            for d in _h.get("drawing_documents", [])
+                        )
+                        break
+                if not _has_dfl03:
+                    for _h in _gh:
+                        _dfl03_docs = [
+                            d for d in _h.get("drawing_documents", [])
+                            if d.get("code") == "DFL03" and d.get("download_url")
+                        ]
+                        if not _dfl03_docs:
+                            continue
+                        # DFL03 파일명에 구역 키워드 포함 확인
+                        if primary_kw and not any(
+                            primary_kw in d.get("name", "") for d in _dfl03_docs
+                        ):
+                            continue
+                        _dfl_urls = [
+                            d["download_url"]
+                            for d in _h.get("drawing_documents", [])
+                            if d.get("code") in ("DFL03", "DFL01")
+                            and d.get("download_url")
+                        ]
+                        gyeoljeong_ann = {
+                            "title": _h.get("desc_detail") or gyeoljeong_ann.get("title", ""),
+                            "raw_content": _h.get("desc_detail") or gyeoljeong_ann.get("raw_content", ""),
+                            "published_at": _h.get("date", ""),
+                            "gazette_no": _h.get("no", ""),
+                            "source": "upis_api",
+                            "category": "결정고시",
+                            "content_quality": "summary",
+                            "pdf_urls": _dfl_urls,
+                        }
+                        logger.info(f"[DFL03 타겟보정] {_h.get('no')} → {len(_dfl_urls)} PDF")
+                        break
+
             upis_ct = ""
             if isinstance(upis_data, dict):
                 ntfc = upis_data.get("notification") or {}
@@ -1120,7 +1171,7 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
                                     gyeoljeong_data["pdf_urls"].append(url)
                         break
                 # 2차: 날짜 매칭 실패 시, 파일명에 구역 키워드 포함된 최신 DFL03
-                if not any(u for u in gyeoljeong_data["pdf_urls"] if "결정조서" in u or "DFL03" in u):
+                if not any(u for u in gyeoljeong_data["pdf_urls"] if "결정조서" in unquote(u) or "DFL03" in u):
                     _found_dfl03 = False
                     for h in gh:
                         for doc in h.get("drawing_documents", []):
