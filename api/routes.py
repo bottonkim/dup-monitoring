@@ -772,6 +772,7 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
                             s = s[len(noise):].strip()
                     return s
 
+                # 결정고시 우선, 열람공고 폴백
                 for ann in [gyeoljeong_ann, yeolam_ann]:
                     if not ann:
                         continue
