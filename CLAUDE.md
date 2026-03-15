@@ -26,7 +26,7 @@
 ├── scheduler/jobs.py       # APScheduler 작업 정의
 ├── pdf/                    # PDF 추출/Claude 분석
 │   ├── extractor.py        # pdfplumber 텍스트 추출
-│   └── claude_analyzer.py  # Claude API 구조화 분석 (8항목)
+│   └── claude_analyzer.py  # Claude API 구조화 분석 (9항목)
 ├── notifications/          # 이메일 발송
 └── deploy/                 # 서버 배포 스크립트 (systemd, nginx)
 ```
@@ -47,7 +47,10 @@
    - 구청 구보 검색
    - 구청 지구단위계획 게시판 검색
 4. 외부 검색 결과 + DB 고시공고 병합 (제목 중복 제거)
-5. AI 분석: 비동기 AJAX (/api/analyze-gazette) — 6단계 폴백
+5. AI 분석: 비동기 AJAX — 2가지 엔드포인트
+   - `/api/analyze-gazette-tabs` (POST): 열람공고 + 결정고시 탭 분리 분석 (기본)
+   - `/api/analyze-gazette` (POST): 단일 분석 (레거시, 탭 분리 불가 시 폴백)
+   - 6단계 폴백 (아래 참조)
 
 ## AI 분석 파이프라인 (/api/analyze-gazette, POST)
 
@@ -64,7 +67,7 @@ content_quality 판별: `_DETAIL_KEYWORDS` (건폐율, 용적률, 허용용도, 
 캐시 계층: 분석 결과 JSON → 추출 텍스트 → PDF 파일 (한번 성공 시 재처리 불필요)
 - 시보 캐시: `data/pdfs/sibo{번호}_{hash}_analysis.json`, `*_text.txt`
 - 첨부 PDF 캐시: `data/pdfs/{url_hash}_analysis.json`
-- 캐시 삭제 시 재추출됨 (코드 변경 후 기존 캐시 삭제 필요)
+- **캐시 자동 무효화**: `SCHEMA_VERSION` (프롬프트 MD5 해시 12자리, `claude_analyzer.py`에서 생성) → 캐시 JSON에 `_schema_version` 저장 → 로드 시 버전 불일치하면 캐시 무시하고 재분석. 프롬프트 변경 시 수동 캐시 삭제 불필요
 
 **시보 PDF 2단계 처리 (gazette_pdf.py)**:
 - Phase A: 전체 PDF에서 구역명 키워드 매칭 페이지 스캔 (텍스트 미보관)
@@ -87,8 +90,31 @@ content_quality 판별: `_DETAIL_KEYWORDS` (건폐율, 용적률, 허용용도, 
 6. 용도별 비율
 7. 건축/개발 제한사항
 8. 기타사항 (조경, 주차, 기부채납 등)
+9. 세부구역 (`sub_zone`) — 해당 필지가 속한 특별계획구역/획지/가구명
 
 **중요**: `claude_analyzer.py`(PDF 분석)와 `announcements.py`(CN/UPIS 폴백 분석)의 프롬프트 스키마는 반드시 동일하게 유지
+
+## 세부구역 감지 (`sub_zone`)
+
+지구단위계획구역/정비구역 내 세부구역(특별계획구역, 획지, 가구 등) 3계층 감지:
+
+1. **VWORLD API** — `specific_zone_names`에서 세부구역 키워드 탐색 (데이터 거의 없음)
+2. **서버 사이드 regex** — 고시공고 제목/본문에서 `특별계획구역|세부개발계획|특별계획가능구역` 패턴 추출 (페이지 즉시 표시)
+   - `_SUB_PAT`: 다중 단어 지원 (예: "왕십리 오거리변 특별계획구역")
+   - 노이즈 접두어 제거 (`_NOISE`: "및", "지구단위계획", "도시관리계획", "결정")
+3. **AI 분석** — 결정조서 표에서 해당 필지(dong_jibun)가 속한 세부구역 추출 (AJAX 후 자동 반영)
+   - `pdf_title`에 `[분석 대상: {sub_zone}, 필지: {dong_jibun}]` 포함하여 AI가 특정 필지 행을 찾도록 유도
+
+프론트엔드: 토지 개요 `.ai-sub-zone-slot`에 표시 — 서버 regex 결과 즉시 렌더 + AI 분석 완료 시 JS로 업데이트
+
+## AI 분석 탭 (열람공고/결정고시)
+
+`/api/analyze-gazette-tabs` 엔드포인트로 두 유형의 고시를 각각 분석:
+- **결정고시**: category가 "결정고시", "변경고시", "지정고시", "고시", "구보" 등
+- **열람공고**: category가 "열람공고", "결정공고", "공고" 등 (title에 "열람" 포함)
+- 프론트엔드: 탭 UI로 전환 가능, 한쪽만 있으면 탭 바 없이 단일 표시
+- `_ai_pending_tabs` 구조: `{yeolam: {...}, gyeoljeong: {...}, zone_name, upis_content}`
+- 기존 `_ai_pending` 및 `/api/analyze-gazette`도 하위 호환 유지
 
 ## 고시공고 매칭 로직
 
@@ -228,7 +254,9 @@ ssh -i ~/.ssh/oracle_cloud ubuntu@168.107.53.76 "cd /opt/dup-monitor && git pull
 - 자동완성: 항목 선택 시 주소만 채움, 폼 자동 제출 안 함
 - 한국 정부 API (VWORLD, juso.go.kr): 해외 서버에서 호출 불가 → 한국 리전 서버 필수
 - 시보 PDF 분석: 2단계 처리(스캔→분리→추출) + subprocess 격리 + 텍스트/분석 캐시 (gazette_pdf.py)
-- AI 분석 엔드포인트: POST 방식 (`/api/analyze-gazette`), 프론트엔드에서 JSON body로 요청 (zone_name, gazette_ref, ann_title, ann_cn, upis_content, content_quality, pdf_urls)
+- AI 분석 엔드포인트: POST 방식, 프론트엔드에서 JSON body로 요청
+  - `/api/analyze-gazette-tabs`: 열람공고+결정고시 탭 분리 (기본)
+  - `/api/analyze-gazette`: 단일 분석 (레거시 폴백)
 - AI 분석 결과에 `_gazette_source` 필드 포함 (사용된 소스 표시: "고시 상세", "UPIS 상세", "첨부 PDF", "시보 PDF" 등)
 - Windows 로컬 개발: multiprocessing은 spawn 방식이라 subprocess 대신 직접 호출됨 (gazette_pdf.py의 sys.platform 분기)
-- 시보 PDF 캐시 무효화: 추출 로직 변경 시 `data/pdfs/sibo*_text.txt`와 `*_analysis.json` 삭제 필요
+- 시보 PDF 캐시 무효화: `SCHEMA_VERSION` 자동 체크로 프롬프트 변경 시 재분석됨. 텍스트 추출 로직 변경 시에만 `data/pdfs/sibo*_text.txt` 수동 삭제 필요
