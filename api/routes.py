@@ -177,16 +177,16 @@ def _build_prompt_from_body(body: dict) -> dict:
     if not prompts:
         return {"error": "분석할 텍스트 콘텐츠가 없습니다. 자동 분석을 이용해주세요."}
 
-    # PDF 다운로드 링크 수집 (사용자가 Claude.ai에 첨부용)
-    pdf_links = []
+    # PDF 다운로드 링크 탭별 수집
+    tab_pdfs = {}
     for tab_key in ("gyeoljeong", "yeolam"):
         tab = body.get(tab_key)
-        if not tab:
+        if not tab or tab_key not in prompts:
             continue
-        for u in (tab.get("pdf_urls") or []):
-            if u and u not in pdf_links:
-                pdf_links.append(u)
-    return {"prompts": prompts, "pdf_urls": pdf_links}
+        urls = [u for u in (tab.get("pdf_urls") or []) if u]
+        if urls:
+            tab_pdfs[tab_key] = urls
+    return {"prompts": prompts, "tab_pdfs": tab_pdfs}
 
 
 def _run_gazette_analysis(

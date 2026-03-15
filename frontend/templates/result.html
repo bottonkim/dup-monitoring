@@ -717,24 +717,26 @@
             }
             _manualPrompts = data.prompts;
             var labels = {gyeoljeong: '결정고시', yeolam: '열람공고'};
+            var tabPdfs = data.tab_pdfs || {};
             var html = '';
-            // PDF 링크 (공통)
-            if (data.pdf_urls && data.pdf_urls.length > 0) {
-              html += '<div class="ai-pdf-box"><strong>첨부 PDF 다운로드:</strong> Claude에 파일 첨부하면 정확도가 높아집니다.<br>';
-              data.pdf_urls.forEach(function(u, i) {
-                var name = decodeURIComponent(u.split('/').pop().split('?')[0]) || ('PDF ' + (i+1));
-                if (name.length > 40) name = name.substring(0, 37) + '...';
-                html += '<a href="' + u + '" target="_blank" class="ai-pdf-dl">' + name + '</a> ';
-              });
-              html += '</div>';
-            }
             html += '<a href="https://claude.ai/new" target="_blank" class="ai-link-btn" style="margin-bottom:10px;display:inline-block">claude.ai 열기</a>';
             // 각 탭별 섹션
+            function pdfLinksHtml(urls) {
+              if (!urls || !urls.length) return '';
+              var h = '<div class="ai-pdf-box"><strong>첨부 PDF:</strong> Claude에 파일 첨부하면 정확도가 높아집니다.<br>';
+              urls.forEach(function(u, i) {
+                var name = decodeURIComponent(u.split('/').pop().split('?')[0]) || ('PDF ' + (i+1));
+                if (name.length > 40) name = name.substring(0, 37) + '...';
+                h += '<a href="' + u + '" target="_blank" class="ai-pdf-dl">' + name + '</a> ';
+              });
+              return h + '</div>';
+            }
             var keys = Object.keys(data.prompts);
             keys.forEach(function(key) {
               var label = labels[key] || key;
               html += '<div class="ai-manual-section">';
               html += '<div class="ai-manual-section-header">' + label + '</div>';
+              html += pdfLinksHtml(tabPdfs[key]);
               html += '<div class="ai-manual-step">';
               html += '<span class="ai-step-num">1</span><span>프롬프트를 복사하세요</span>';
               html += '<div class="ai-manual-actions"><button class="ai-copy-btn" onclick="copyPrompt(\'' + key + '\', this)">프롬프트 복사</button></div>';
