@@ -676,13 +676,6 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
                 if any(k in n for k in _SUB_KW):
                     sub_zone = n
                     break
-            # 세부 구역 못 찾았으면, primary_zone 외 다른 구역명 중
-            # 같은 지명 포함된 것 (예: 같은 지구단위 내 소분류)
-            if not sub_zone and primary_zone_core:
-                for n in specific_zone_names:
-                    if n != primary_zone and primary_zone_core.split()[0] in n:
-                        sub_zone = n
-                        break
 
             # 외부 소스에서 카테고리별 본문 + PDF URL 수집 (탭별 분리)
             ext_yeolam = {"body": "", "title": "", "pdf_urls": []}
