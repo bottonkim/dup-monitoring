@@ -754,6 +754,36 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
             yeolam_ann = y_cf or y_cc or y_kw or y_fb
             gyeoljeong_ann = g_cf or g_cc or g_kw or g_fb
 
+            # sub_zone 미감지 시, 고시 제목/본문에서 세부 구역명 파싱
+            if not sub_zone:
+                import re
+                _SUB_PAT = re.compile(
+                    r'(\S+\s*특별계획구역|\S+\s*세부개발계획|\S+\s*특별계획가능구역)'
+                )
+                for ann in [gyeoljeong_ann, yeolam_ann]:
+                    if not ann:
+                        continue
+                    # 제목에서 먼저 시도
+                    t = ann.get("title", "")
+                    m = _SUB_PAT.search(t)
+                    if m:
+                        cand = m.group(1).strip()
+                        # primary_zone 자체가 아닌 세부 구역만
+                        if cand != primary_zone and primary_zone_core not in cand:
+                            sub_zone = cand
+                            break
+                    # 본문 앞부분에서 시도
+                    body = (ann.get("raw_content") or ann.get("body") or "")[:3000]
+                    m = _SUB_PAT.search(body)
+                    if m:
+                        cand = m.group(1).strip()
+                        if cand != primary_zone and primary_zone_core not in cand:
+                            sub_zone = cand
+                            break
+
+            # sub_zone → result에 포함 (Jinja2에서 즉시 표시)
+            result["sub_zone"] = sub_zone
+
             upis_ct = ""
             if isinstance(upis_data, dict):
                 ntfc = upis_data.get("notification") or {}

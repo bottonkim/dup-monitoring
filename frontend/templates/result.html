@@ -79,9 +79,9 @@
                   <td>
                     <strong>{{ zone.upis_name or zone.zone_name }}</strong>
                     {% if zone.upis_name and zone.upis_name != zone.zone_name %}<br><small class="zone-loc">{{ zone.zone_name }}</small>{% endif %}
-                    {# 세부 구역(특별계획구역 등) — AI 분석 후 JS로 삽입 #}
+                    {# 세부 구역(특별계획구역 등) — 서버 사이드 파싱 + AI 분석 후 업데이트 #}
                     {% if '지구단위' in (zone.upis_name or zone.zone_name or '') or '정비구역' in (zone.zone_type or '') %}
-                      <span class="ai-sub-zone-slot"></span>
+                      <span class="ai-sub-zone-slot">{% if sub_zone %}<br><small class="zone-sub">↳ {{ sub_zone }}</small>{% endif %}</span>
                     {% endif %}
                   </td>
                   <td>{% if zone.designated_year and zone.designated_year != '0000' %}{{ zone.designated_year }}년{% else %}—{% endif %}</td>
