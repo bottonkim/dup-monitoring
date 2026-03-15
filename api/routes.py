@@ -1007,6 +1007,37 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
             yeolam_ann = y_cf or y_cc or y_kw or y_fb
             gyeoljeong_ann = g_cf or g_cc or g_kw or g_fb
 
+            # 정비구역 AI 타겟 오버라이드: spcfWtnnc 최신 결정고시에 DFL03 있으면 우선
+            if sub_zone and "정비구역" in sub_zone and result.get("all_notifications"):
+                _override_done = False
+                for _ntfc in result["all_notifications"]:
+                    if _ntfc.get("category_key") != "spcfWtnnc":
+                        continue
+                    for _h in _ntfc.get("gazette_history", []):
+                        if not _h.get("no"):
+                            continue
+                        _dfl_urls = [
+                            d["download_url"]
+                            for d in _h.get("drawing_documents", [])
+                            if d.get("code") in ("DFL03", "DFL01") and d.get("download_url")
+                        ]
+                        if _dfl_urls:
+                            gyeoljeong_ann = {
+                                "title": _h.get("desc_detail") or f"{_ntfc.get('zone_name','')} 결정고시",
+                                "raw_content": _ntfc.get("notification", {}).get("content", ""),
+                                "published_at": _h.get("date", ""),
+                                "gazette_no": _h.get("no", ""),
+                                "source": "upis_api",
+                                "category": "결정고시",
+                                "content_quality": "summary",
+                                "pdf_urls": _dfl_urls,
+                            }
+                            _override_done = True
+                            logger.info(f"[정비구역 오버라이드] {_h.get('no')} → {len(_dfl_urls)} PDF")
+                            break
+                    if _override_done:
+                        break
+
             # sub_zone 미감지 시, 고시 제목/본문에서 세부 구역명 파싱
             if not sub_zone:
                 import re
@@ -1090,13 +1121,15 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
                         break
                 # 2차: 날짜 매칭 실패 시, 파일명에 구역 키워드 포함된 최신 DFL03
                 if not any(u for u in gyeoljeong_data["pdf_urls"] if "결정조서" in u or "DFL03" in u):
+                    _found_dfl03 = False
                     for h in gh:
                         for doc in h.get("drawing_documents", []):
                             if doc.get("code") == "DFL03" and doc.get("download_url"):
                                 if primary_kw and primary_kw in doc.get("name", ""):
                                     gyeoljeong_data["pdf_urls"].append(doc["download_url"])
+                                    _found_dfl03 = True
                                     break
-                        if len(gyeoljeong_data["pdf_urls"]) > 0:
+                        if _found_dfl03:
                             break
 
             logger.info(f"[탭매칭] zone_core='{primary_zone_core}' | "

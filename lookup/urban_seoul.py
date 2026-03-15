@@ -391,7 +391,9 @@ def fetch_zone_data(pnu: str, timeout: int = 20) -> dict:
                     "wtnnc_sn": wt,
                 })
 
-            # 전체 카테고리 알림 수집
+            # 전체 카테고리 알림 수집 (원본 wtnnc_sn 보존)
+            for _n in wt_notifications:
+                _n["_wtnnc_sn"] = wt
             all_notifications.extend(wt_notifications)
 
             # best: dstplanWtnnc 최우선
@@ -458,19 +460,37 @@ def fetch_zone_data(pnu: str, timeout: int = 20) -> dict:
             result["drawing_documents"] = history_source.get("drawing_documents", [])
 
         # 사업정보 파일 목록 보강 (getPropelList — 각 고시별 전체 첨부파일)
-        # all_notifications 내 dstplanWtnnc의 gazette_history에 매핑
+        # dstplanWtnnc propel로 dstplanWtnnc + spcfWtnnc 모두 보강
+        # (정비구역 결정이 지구단위계획 결정을 겸하는 경우 propel에 포함됨)
         dstplan_wt = None
         for z in zones:
             if z.get("zone_type") in ("지구단위계획구역",):
                 dstplan_wt = z.get("wtnnc_sn")
                 break
         if dstplan_wt:
+            combined_gh = []
             for ntfc in deduped_notifications:
-                if ntfc.get("category_key") == "dstplanWtnnc" and ntfc.get("gazette_history"):
-                    _enrich_files_from_propel(
-                        sess, dstplan_wt, ntfc["gazette_history"], timeout
-                    )
-                    break  # 하나의 dstplanWtnnc만 처리
+                cat = ntfc.get("category_key")
+                gh = ntfc.get("gazette_history")
+                if cat in ("dstplanWtnnc", "spcfWtnnc") and gh:
+                    combined_gh.extend(gh)
+            if combined_gh:
+                _enrich_files_from_propel(sess, dstplan_wt, combined_gh, timeout)
+
+        # spcfWtnnc 자체 propel 시도 (미보강 항목에 대해)
+        for ntfc in deduped_notifications:
+            if ntfc.get("category_key") != "spcfWtnnc":
+                continue
+            gh = ntfc.get("gazette_history", [])
+            unenriched = [h for h in gh if not h.get("drawing_documents") or
+                          len(h.get("drawing_documents", [])) <= 1]
+            if not unenriched:
+                continue
+            spcf_wt = ntfc.get("_wtnnc_sn")
+            if spcf_wt:
+                _enrich_files_from_propel(
+                    sess, spcf_wt, unenriched, timeout
+                )
 
         logger.debug(
             f"urban.seoul.go.kr 조회 (PNU={pnu}): "
@@ -1090,7 +1110,14 @@ def _enrich_files_from_propel(
             no_to_files[notice_no] = file_list
 
         if not no_to_files:
+            logger.info(f"propel no_to_files 비어있음 (presentSn={present_sn}, wtnnc={wtnnc_sn})")
             return
+
+        logger.debug(
+            f"propel noticeNo={list(no_to_files.keys())[:10]} "
+            f"gh_no={[h.get('no','') for h in gazette_history[:10]]} "
+            f"(wtnnc={wtnnc_sn})"
+        )
 
         # gazette_history 각 항목에 파일 매핑 + desc_detail 보강
         enriched = 0
