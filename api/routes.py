@@ -45,11 +45,13 @@ def _source_label(source: str) -> str:
     return "DB"
 
 
-def _merge_ann_into_history(all_notifications: list, announcements: list):
+def _merge_ann_into_history(all_notifications: list, announcements: list,
+                            jeongbi_kw: list = None):
     """고시공고를 연혁에 고시번호 기준으로 병합 (출처 표기).
 
     - 고시번호 매칭 → 기존 연혁 항목에 출처·URL·본문 추가
-    - 미매칭 고시공고 → 1번째(주요) zone의 연혁 끝에 추가
+    - 미매칭 고시공고 → 해당 zone 연혁 끝에 추가
+    - 정비구역 키워드(jeongbi_kw) 포함 고시 → spcfWtnnc 연혁으로 라우팅
     - 날짜순 재정렬
     """
     if not all_notifications:
@@ -73,35 +75,54 @@ def _merge_ann_into_history(all_notifications: list, announcements: list):
     if not target_ntfc:
         target_ntfc = all_notifications[0]
 
-    primary_gh = target_ntfc.get("gazette_history", [])
-    existing_nos = {h.get("no", "") for h in primary_gh}
-    matched_ann_idx = set()
-
-    # 1) 기존 연혁 항목에 고시공고 매칭
-    for h in primary_gh:
-        h.setdefault("sources", ["UPIS"])
-        h_no = h.get("no", "")
-        if not h_no:
-            continue
-        for i, ann in enumerate(announcements):
-            if ann.get("_gno") == h_no and i not in matched_ann_idx:
-                src = _source_label(ann.get("source", ""))
-                if src not in h["sources"]:
-                    h["sources"].append(src)
-                h["ann_url"] = ann.get("url", "")
-                h["ann_source"] = ann.get("source", "")
-                h["ann_category"] = ann.get("category", "")
-                h["ann_title_full"] = ann.get("title", "")
-                h["ann_raw_content"] = (ann.get("raw_content") or "")[:300]
-                matched_ann_idx.add(i)
+    # 정비구역(spcfWtnnc) zone 찾기
+    jeongbi_ntfc = None
+    if jeongbi_kw:
+        for ntfc in all_notifications:
+            if ntfc.get("category_key") == "spcfWtnnc":
+                jeongbi_ntfc = ntfc
                 break
 
+    # 매칭 대상 연혁 목록 구성 (지구단위 + 정비구역)
+    history_targets = [(target_ntfc, target_ntfc.get("gazette_history", []))]
+    if jeongbi_ntfc and jeongbi_ntfc is not target_ntfc:
+        history_targets.append((jeongbi_ntfc, jeongbi_ntfc.get("gazette_history", [])))
+
+    all_existing_nos = set()
+    for _, gh in history_targets:
+        all_existing_nos.update(h.get("no", "") for h in gh)
+    matched_ann_idx = set()
+
+    # 1) 기존 연혁 항목에 고시공고 매칭 (지구단위 + 정비구역 모두)
+    for _, gh in history_targets:
+        for h in gh:
+            h.setdefault("sources", ["UPIS"])
+            h_no = h.get("no", "")
+            if not h_no:
+                continue
+            for i, ann in enumerate(announcements):
+                if ann.get("_gno") == h_no and i not in matched_ann_idx:
+                    src = _source_label(ann.get("source", ""))
+                    if src not in h["sources"]:
+                        h["sources"].append(src)
+                    h["ann_url"] = ann.get("url", "")
+                    h["ann_source"] = ann.get("source", "")
+                    h["ann_category"] = ann.get("category", "")
+                    h["ann_title_full"] = ann.get("title", "")
+                    h["ann_raw_content"] = (ann.get("raw_content") or "")[:300]
+                    matched_ann_idx.add(i)
+                    break
+
     # 2) 미매칭 고시공고 → 새 항목으로 추가
+    #    정비구역 키워드 포함 → spcfWtnnc 연혁, 나머지 → dstplanWtnnc 연혁
+    primary_gh = target_ntfc.get("gazette_history", [])
+    jeongbi_gh = jeongbi_ntfc.get("gazette_history", []) if jeongbi_ntfc else None
+
     for i, ann in enumerate(announcements):
         if i in matched_ann_idx:
             continue
         gno = ann.get("_gno", "")
-        if gno and gno in existing_nos:
+        if gno and gno in all_existing_nos:
             continue
         src = _source_label(ann.get("source", ""))
         entry = {
@@ -116,12 +137,20 @@ def _merge_ann_into_history(all_notifications: list, announcements: list):
             "ann_raw_content": (ann.get("raw_content") or "")[:300],
             "sources": [src],
         }
-        primary_gh.append(entry)
+
+        # 정비구역 라우팅: 제목에 정비구역 핵심어 포함 시 spcfWtnnc로
+        title = ann.get("title", "")
+        is_jeongbi = (jeongbi_gh is not None and jeongbi_kw and
+                      any(k in title for k in jeongbi_kw))
+        dest = jeongbi_gh if is_jeongbi else primary_gh
+        dest.append(entry)
         if gno:
-            existing_nos.add(gno)
+            all_existing_nos.add(gno)
 
     # 날짜순 재정렬 (최신 먼저)
     primary_gh.sort(key=lambda x: x.get("date", ""), reverse=True)
+    if jeongbi_gh is not None:
+        jeongbi_gh.sort(key=lambda x: x.get("date", ""), reverse=True)
 
 
 def create_app(settings, db_path: Path) -> FastAPI:
@@ -725,16 +754,43 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
 
         gazette_keywords = _extract_short_keywords(specific_zone_names, emd_nm) if specific_zone_names else []
 
-        if specific_zone_names:
+        # 정비구역명 식별 (VWORLD lt_c_ub011 레이어 + specific_zone_names)
+        _jeongbi_names = [n for n in specific_zone_names if "정비구역" in n]
+        if not _jeongbi_names:
+            _jeongbi_names = [
+                z["zone_name"] for z in zones
+                if z.get("layer") == "lt_c_ub011" and z.get("zone_name")
+            ]
+        # 정비구역 핵심어 (접미사 제거): merge 라우팅 + 검색용
+        _jeongbi_cores = []
+        for _jn in _jeongbi_names:
+            _jc = _jn
+            for _suf in ["도시환경정비구역", "주거환경정비구역", "정비구역", "구역"]:
+                _jc = _jc.replace(_suf, "").strip()
+            if _jc and len(_jc) >= 2:
+                _jeongbi_cores.append(_jc)
+
+        # 외부 검색 키워드: 기존 3개 + 정비구역명 보장
+        _ext_search_names = list(specific_zone_names[:3])
+        for _jn in _jeongbi_names:
+            if _jn not in _ext_search_names:
+                _ext_search_names.append(_jn)
+                break
+
+        # 구보 검색 키워드에 정비구역 핵심어 추가
+        if _jeongbi_names:
+            gazette_keywords += _extract_short_keywords(_jeongbi_names, "")
+
+        if specific_zone_names or _jeongbi_names:
             def _search_seoul_notices():
                 from lookup.seoul_notice import search_seoul_announcements
-                return search_seoul_announcements(specific_zone_names[:3], limit=5, timeout=min(to, 15))
+                return search_seoul_announcements(_ext_search_names[:4], limit=5, timeout=min(to, 15))
 
             def _search_gu_announce():
                 if not district:
                     return []
                 from lookup.gu_announce import fetch_gu_announcements
-                return fetch_gu_announcements(district, specific_zone_names[:3], limit=5, timeout=min(to, 15))
+                return fetch_gu_announcements(district, _ext_search_names[:4], limit=5, timeout=min(to, 15))
 
             def _search_gu_gazette():
                 if not district:
@@ -746,7 +802,7 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
                 if not district:
                     return []
                 from lookup.gu_planning import fetch_gu_planning
-                return fetch_gu_planning(district, specific_zone_names[:3], limit=5, timeout=min(to, 15))
+                return fetch_gu_planning(district, _ext_search_names[:4], limit=5, timeout=min(to, 15))
 
             with ThreadPoolExecutor(max_workers=4) as pool2:
                 f_seoul = pool2.submit(_safe, _search_seoul_notices)
@@ -802,9 +858,16 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
         zone_names = specific_zone_names + fallback_zone_names
         result["announcements"] = [dict(a) if hasattr(a, "keys") else a for a in announcements]
 
-        # 5. 고시공고를 연혁에 병합 (출처 표기)
+        # 5. VWORLD 정비구역명으로 UPIS spcfWtnnc 구역명 보완
+        if _jeongbi_names and result.get("all_notifications"):
+            for ntfc in result["all_notifications"]:
+                if ntfc.get("category_key") == "spcfWtnnc" and not ntfc.get("zone_name"):
+                    ntfc["zone_name"] = _jeongbi_names[0]
+
+        # 5a. 고시공고를 연혁에 병합 (출처 표기, 정비구역 라우팅)
         if result.get("all_notifications"):
-            _merge_ann_into_history(result["all_notifications"], result["announcements"])
+            _merge_ann_into_history(result["all_notifications"], result["announcements"],
+                                   jeongbi_kw=_jeongbi_cores)
 
         # 5a. 고시공고 structured_json 파싱 (DB 캐시된 것만, Claude 호출 없음)
         for ann in result["announcements"]:
@@ -829,15 +892,18 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
                     primary_zone = n
                     break
 
-            # 세부 구역명 (특별계획구역/가구/지구 등) — AI 분석 시 해당 구역 집중 추출용
+            # 세부 구역명 (특별계획구역/정비구역/가구 등) — AI 분석 시 해당 구역 집중 추출용
             sub_zone = ""
-            _SUB_KW = ("특별계획구역", "세부개발계획", "가구", "획지")
+            _SUB_KW = ("특별계획구역", "세부개발계획", "가구", "획지", "정비구역")
             for n in specific_zone_names:
                 if n == primary_zone:
                     continue
                 if any(k in n for k in _SUB_KW):
                     sub_zone = n
                     break
+            # sub_zone 미감지 시 VWORLD 정비구역명으로 폴백
+            if not sub_zone and _jeongbi_names:
+                sub_zone = _jeongbi_names[0]
 
             # 외부 소스에서 카테고리별 본문 + PDF URL 수집 (탭별 분리)
             ext_yeolam = {"body": "", "title": "", "pdf_urls": []}
@@ -915,7 +981,10 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
                     elif primary_kw and primary_kw in title and not y_kw:
                         y_kw = ann
                     elif not y_fb:
-                        y_fb = ann
+                        _fb_text = title + " " + cn[:500]
+                        if (primary_kw and primary_kw in _fb_text) or \
+                           (emd_nm and emd_nm in _fb_text):
+                            y_fb = ann
                 else:
                     if primary_zone_core and primary_zone_core in title:
                         if not is_combined and not g_cf:
@@ -925,7 +994,10 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
                     elif primary_kw and primary_kw in title and not g_kw:
                         g_kw = ann
                     elif not g_fb:
-                        g_fb = ann
+                        _fb_text = title + " " + cn[:500]
+                        if (primary_kw and primary_kw in _fb_text) or \
+                           (emd_nm and emd_nm in _fb_text):
+                            g_fb = ann
 
             yeolam_ann = y_cf or y_cc or y_kw or y_fb
             gyeoljeong_ann = g_cf or g_cc or g_kw or g_fb
