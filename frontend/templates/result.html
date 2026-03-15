@@ -572,6 +572,7 @@
                   <a href="https://claude.ai/new" target="_blank" class="ai-link-btn">claude.ai 열기</a>
                 </div>
                 <div id="aiPromptStatus" class="ai-prompt-status"></div>
+                <div id="aiPdfLinks" class="ai-pdf-box" style="display:none"></div>
               </div>
               <div class="ai-manual-step">
                 <span class="ai-step-num">2</span>
@@ -728,6 +729,18 @@
             _manualPromptText = data.prompts[keys[0]];
             document.getElementById('aiPromptStatus').textContent = '프롬프트 준비 완료 (' + _manualPromptText.length.toLocaleString() + '자)';
             document.getElementById('aiCopyBtn').disabled = false;
+            // PDF 첨부 안내
+            var pdfBox = document.getElementById('aiPdfLinks');
+            if (data.pdf_urls && data.pdf_urls.length > 0) {
+              var html = '<strong>첨부 PDF 다운로드:</strong> Claude에 파일 첨부하면 정확도가 높아집니다.<br>';
+              data.pdf_urls.forEach(function(u, i) {
+                var name = decodeURIComponent(u.split('/').pop().split('?')[0]) || ('PDF ' + (i+1));
+                if (name.length > 40) name = name.substring(0, 37) + '...';
+                html += '<a href="' + u + '" target="_blank" class="ai-pdf-dl">' + name + '</a> ';
+              });
+              pdfBox.innerHTML = html;
+              pdfBox.style.display = 'block';
+            }
           })
           .catch(function() {
             document.getElementById('aiPromptStatus').textContent = '프롬프트 생성 실패';

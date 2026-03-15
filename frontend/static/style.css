@@ -884,6 +884,15 @@ a:hover { text-decoration: underline; }
   justify-content: center; flex-shrink: 0;
 }
 .ai-manual-actions { display: flex; gap: 6px; width: 100%; margin-top: 4px; }
+.ai-pdf-box {
+  margin-top: 8px; padding: 10px 12px; background: #fffbeb; border: 1px solid #f59e0b;
+  border-radius: 6px; font-size: 12px; line-height: 1.8; color: #92400e;
+}
+.ai-pdf-dl {
+  display: inline-block; padding: 2px 8px; background: #fff; border: 1px solid #d1d5db;
+  border-radius: 4px; font-size: 11px; color: #003087; text-decoration: none; margin: 2px 0;
+}
+.ai-pdf-dl:hover { background: #eff6ff; border-color: #003087; }
 .ai-back-btn {
   background: none; border: none; color: #64748b; font-size: 13px;
   cursor: pointer; padding: 0 0 8px; font-family: inherit;

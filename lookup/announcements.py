@@ -309,7 +309,8 @@ def _build_prompt_parts(title: str, cn_content: str) -> tuple:
 def build_analysis_prompt(title: str, cn_content: str) -> str:
     """분석 프롬프트 전문 반환 (Claude API 미호출, 사용자가 직접 Claude에 붙여넣기용)"""
     system, prompt = _build_prompt_parts(title, cn_content)
-    return system + "\n\n---\n\n" + prompt
+    note = "\n\n[참고] PDF 파일이 함께 첨부된 경우, 첨부된 PDF의 내용도 위 텍스트와 함께 분석하여 JSON을 작성하세요. PDF에 더 상세한 결정조서(건폐율, 용적률, 높이제한, 허용/불허 용도 등)가 있으면 그 내용을 우선 반영하세요."
+    return system + "\n\n---\n\n" + prompt + note
 
 
 def analyze_announcement_with_claude(
