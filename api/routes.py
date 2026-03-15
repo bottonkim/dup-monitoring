@@ -775,11 +775,13 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
             # 제목에 특정 지번이 명시된 고시 감지 (예: "숭인동 280번지 일대")
             _JIBUN_PAT = _re.compile(r'(\d{1,5})(?:-\d+)?(?:\s*번지|\s*일대)')
 
-            def _is_different_parcel(title_str):
-                """제목에 특정 지번이 있는데 검색 지번과 다르면 True"""
+            def _is_different_parcel(title_str, content_str=""):
+                """제목/본문에 특정 지번이 있는데 검색 지번과 다르면 True"""
                 if not _searched_jibun:
                     return False
-                jibun_matches = _JIBUN_PAT.findall(title_str)
+                # 제목 + 본문 앞부분(500자)에서 지번 패턴 검색
+                check_text = title_str + " " + content_str[:500]
+                jibun_matches = _JIBUN_PAT.findall(check_text)
                 if not jibun_matches:
                     return False  # 지번 언급 없음 → 구역 전체 고시
                 return _searched_jibun not in jibun_matches
@@ -795,8 +797,8 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
                 cn = ann.get("raw_content") or ann.get("cn_content") or ann.get("body") or ""
                 if (not cn and not title) or not primary_zone:
                     continue
-                # 제목에 다른 지번이 명시된 고시는 스킵
-                if _is_different_parcel(title):
+                # 제목/본문에 다른 지번이 명시된 고시는 스킵
+                if _is_different_parcel(title, cn):
                     continue
                 is_yeolam = "열람" in cat or ("공고" in cat and "결정" not in cat) or "열람" in title
                 is_combined = "," in title  # 합본 고시 감지

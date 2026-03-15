@@ -1073,8 +1073,9 @@ def _enrich_files_from_propel(
         if not isinstance(propel_items, list):
             return
 
-        # noticeNo → fileList 매핑
+        # noticeNo → fileList + tnNtfc 매핑
         no_to_files: dict[str, list[dict]] = {}
+        no_to_ntfc: dict[str, dict] = {}
         for item in propel_items:
             tn = item.get("tnNtfc")
             if not isinstance(tn, dict):
@@ -1082,6 +1083,7 @@ def _enrich_files_from_propel(
             notice_no = tn.get("noticeNo") or ""
             if not notice_no:
                 continue
+            no_to_ntfc[notice_no] = tn
             file_list = item.get("fileList")
             if not isinstance(file_list, list) or not file_list:
                 continue
@@ -1090,10 +1092,30 @@ def _enrich_files_from_propel(
         if not no_to_files:
             return
 
-        # gazette_history 각 항목에 파일 매핑
+        # gazette_history 각 항목에 파일 매핑 + desc_detail 보강
         enriched = 0
         for h in gazette_history:
             h_no = h.get("no", "")
+
+            # desc_detail/title 보강 (propel tnNtfc에서)
+            if not h.get("desc_detail") and h_no in no_to_ntfc:
+                tn = no_to_ntfc[h_no]
+                title = tn.get("title") or ""
+                content = tn.get("content") or ""
+                _is_generic = (
+                    not title
+                    or len(title) <= 10
+                    or ("도시관리계획" in title and "고시" in title)
+                    or ("지형도면" in title and "고시" in title)
+                    or re.match(r"^(결정|변경|결정\(변경\)|고시|공고)$", title.strip())
+                )
+                if _is_generic and content and len(content) > 10:
+                    h["desc_detail"] = _summarize_ntfc_content(content)
+                elif title and len(title) > 10:
+                    h["desc_detail"] = title
+                if not h.get("title") and title:
+                    h["title"] = title
+
             if h_no not in no_to_files:
                 continue
             files = no_to_files[h_no]
