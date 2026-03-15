@@ -637,71 +637,72 @@
             var el = document.getElementById('aiResult');
             if (el) el.innerHTML = '<div class="ai-header"><span class="ai-badge ai-badge-fail">AI 분석</span><span class="ai-source">분석 요청 실패</span></div>';
           });
-          function buildTabHtml(d) {
-            var html = '';
-            var srcLabel = d._gazette_source || '고시공고';
-            var confClass = d.confidence === 'high' ? 'conf-high' : (d.confidence === 'medium' ? 'conf-medium' : 'conf-low');
-            var confText = d.confidence === 'high' ? '분석 충실도 높음' : (d.confidence === 'medium' ? '분석 충실도 보통' : '분석 충실도 낮음');
-            if (d.gazette_number) {
-              html += '<div class="ai-meta ai-meta-top">고시번호: ' + d.gazette_number + (d.announcement_date ? ' (' + d.announcement_date + ')' : '');
-              html += ' <span class="ai-conf ' + confClass + '">' + confText + '</span>';
-              html += ' <span class="ai-src-label">' + srcLabel + '</span></div>';
-            }
-            if (d.summary_korean) html += '<p class="ai-summary-text">' + d.summary_korean + '</p>';
-            function catBlock(num, title, body) {
-              return '<div class="ai-cat"><div class="ai-cat-header"><span class="ai-cat-num">' + num + '</span><span class="ai-cat-title">' + title + '</span></div><div class="ai-cat-body">' + body + '</div></div>';
-            }
-            function listHtml(arr) { return '<ul>' + arr.map(function(x){return '<li>'+x+'</li>';}).join('') + '</ul>'; }
-            var cats = '';
-            var hasCat1 = (d.allowed_uses && d.allowed_uses.length) || (d.prohibited_uses && d.prohibited_uses.length);
-            if (hasCat1) {
-              var b1 = '';
-              if (d.allowed_uses && d.allowed_uses.length) b1 += '<div class="use-box use-allowed"><strong>허용 용도:</strong> ' + d.allowed_uses.join(', ') + '</div>';
-              if (d.prohibited_uses && d.prohibited_uses.length) b1 += '<div class="use-box use-prohibited"><strong>불허 용도:</strong> ' + d.prohibited_uses.join(', ') + '</div>';
-              cats += catBlock(1, '불허/허용 용도', b1);
-            }
-            if (d.use_ratios && d.use_ratios.length) cats += catBlock(2, '건축물 용도비율', listHtml(d.use_ratios));
-            var hasCat3 = d.base_floor_area_ratio || d.allowed_floor_area_ratio || d.max_floor_area_ratio || d.floor_area_ratio;
-            if (hasCat3) {
-              var b3 = '<div class="restriction-grid">';
-              if (d.base_floor_area_ratio) b3 += '<div class="r-cell"><span class="r-label">기준용적률</span><span class="r-value">' + d.base_floor_area_ratio + '</span></div>';
-              if (d.allowed_floor_area_ratio) b3 += '<div class="r-cell"><span class="r-label">허용용적률</span><span class="r-value">' + d.allowed_floor_area_ratio + '</span></div>';
-              if (d.max_floor_area_ratio) b3 += '<div class="r-cell"><span class="r-label">상한용적률</span><span class="r-value">' + d.max_floor_area_ratio + '</span></div>';
-              if (d.floor_area_ratio && !d.base_floor_area_ratio) b3 += '<div class="r-cell"><span class="r-label">용적률</span><span class="r-value">' + d.floor_area_ratio + '</span></div>';
-              b3 += '</div>';
-              cats += catBlock(3, '기준/허용/상한 용적률', b3);
-            }
-            if (d.far_incentive_conditions && d.far_incentive_conditions.length) cats += catBlock(4, '용적률 완화 조건', listHtml(d.far_incentive_conditions));
-            if (d.building_coverage_ratio) cats += catBlock(5, '건폐율', '<div class="restriction-grid"><div class="r-cell"><span class="r-label">건폐율</span><span class="r-value">' + d.building_coverage_ratio + '</span></div></div>');
-            var hasCat6 = d.max_height_meters || d.max_floors || d.height_restrictions_detail;
-            if (hasCat6) {
-              var b6 = '';
-              if (d.max_height_meters || d.max_floors) {
-                b6 += '<div class="restriction-grid">';
-                if (d.max_height_meters) b6 += '<div class="r-cell"><span class="r-label">최고높이</span><span class="r-value">' + d.max_height_meters + 'm</span></div>';
-                if (d.max_floors) b6 += '<div class="r-cell"><span class="r-label">최고층수</span><span class="r-value">' + d.max_floors + '층</span></div>';
-                b6 += '</div>';
-              }
-              if (d.height_restrictions_detail) b6 += '<p style="margin:4px 0 0">' + d.height_restrictions_detail + '</p>';
-              cats += catBlock(6, '높이제한', b6);
-            }
-            var hasCat7 = (d.construction_restrictions && d.construction_restrictions.length) || (d.development_restrictions && d.development_restrictions.length) || d.setback_requirements || (d.other_notes && d.other_notes.length);
-            if (hasCat7) {
-              var b7 = '';
-              if (d.construction_restrictions && d.construction_restrictions.length) b7 += '<strong>건축 제한:</strong>' + listHtml(d.construction_restrictions);
-              if (d.development_restrictions && d.development_restrictions.length) b7 += '<strong>개발 제한:</strong>' + listHtml(d.development_restrictions);
-              if (d.setback_requirements) b7 += '<strong>이격거리/건축선:</strong><p style="margin:0">' + d.setback_requirements + '</p>';
-              if (d.other_notes && d.other_notes.length) b7 += '<strong>기타:</strong>' + listHtml(d.other_notes);
-              cats += catBlock(7, '그 밖의 건축/개발 제한사항', b7);
-            }
-            if (cats) {
-              html += '<div class="ai-categories">' + cats + '</div>';
-            } else {
-              html += '<p class="ai-no-data">상세 건축 제한사항이 추출되지 않았습니다.</p>';
-            }
-            if (d.key_changes && d.key_changes.length) html += '<div class="changes-box" style="margin-top:10px"><strong>주요 변경:</strong>' + listHtml(d.key_changes) + '</div>';
-            return html;
+        }
+
+        function buildTabHtml(d) {
+          var html = '';
+          var srcLabel = d._gazette_source || '고시공고';
+          var confClass = d.confidence === 'high' ? 'conf-high' : (d.confidence === 'medium' ? 'conf-medium' : 'conf-low');
+          var confText = d.confidence === 'high' ? '분석 충실도 높음' : (d.confidence === 'medium' ? '분석 충실도 보통' : '분석 충실도 낮음');
+          if (d.gazette_number) {
+            html += '<div class="ai-meta ai-meta-top">고시번호: ' + d.gazette_number + (d.announcement_date ? ' (' + d.announcement_date + ')' : '');
+            html += ' <span class="ai-conf ' + confClass + '">' + confText + '</span>';
+            html += ' <span class="ai-src-label">' + srcLabel + '</span></div>';
           }
+          if (d.summary_korean) html += '<p class="ai-summary-text">' + d.summary_korean + '</p>';
+          function catBlock(num, title, body) {
+            return '<div class="ai-cat"><div class="ai-cat-header"><span class="ai-cat-num">' + num + '</span><span class="ai-cat-title">' + title + '</span></div><div class="ai-cat-body">' + body + '</div></div>';
+          }
+          function listHtml(arr) { return '<ul>' + arr.map(function(x){return '<li>'+x+'</li>';}).join('') + '</ul>'; }
+          var cats = '';
+          var hasCat1 = (d.allowed_uses && d.allowed_uses.length) || (d.prohibited_uses && d.prohibited_uses.length);
+          if (hasCat1) {
+            var b1 = '';
+            if (d.allowed_uses && d.allowed_uses.length) b1 += '<div class="use-box use-allowed"><strong>허용 용도:</strong> ' + d.allowed_uses.join(', ') + '</div>';
+            if (d.prohibited_uses && d.prohibited_uses.length) b1 += '<div class="use-box use-prohibited"><strong>불허 용도:</strong> ' + d.prohibited_uses.join(', ') + '</div>';
+            cats += catBlock(1, '불허/허용 용도', b1);
+          }
+          if (d.use_ratios && d.use_ratios.length) cats += catBlock(2, '건축물 용도비율', listHtml(d.use_ratios));
+          var hasCat3 = d.base_floor_area_ratio || d.allowed_floor_area_ratio || d.max_floor_area_ratio || d.floor_area_ratio;
+          if (hasCat3) {
+            var b3 = '<div class="restriction-grid">';
+            if (d.base_floor_area_ratio) b3 += '<div class="r-cell"><span class="r-label">기준용적률</span><span class="r-value">' + d.base_floor_area_ratio + '</span></div>';
+            if (d.allowed_floor_area_ratio) b3 += '<div class="r-cell"><span class="r-label">허용용적률</span><span class="r-value">' + d.allowed_floor_area_ratio + '</span></div>';
+            if (d.max_floor_area_ratio) b3 += '<div class="r-cell"><span class="r-label">상한용적률</span><span class="r-value">' + d.max_floor_area_ratio + '</span></div>';
+            if (d.floor_area_ratio && !d.base_floor_area_ratio) b3 += '<div class="r-cell"><span class="r-label">용적률</span><span class="r-value">' + d.floor_area_ratio + '</span></div>';
+            b3 += '</div>';
+            cats += catBlock(3, '기준/허용/상한 용적률', b3);
+          }
+          if (d.far_incentive_conditions && d.far_incentive_conditions.length) cats += catBlock(4, '용적률 완화 조건', listHtml(d.far_incentive_conditions));
+          if (d.building_coverage_ratio) cats += catBlock(5, '건폐율', '<div class="restriction-grid"><div class="r-cell"><span class="r-label">건폐율</span><span class="r-value">' + d.building_coverage_ratio + '</span></div></div>');
+          var hasCat6 = d.max_height_meters || d.max_floors || d.height_restrictions_detail;
+          if (hasCat6) {
+            var b6 = '';
+            if (d.max_height_meters || d.max_floors) {
+              b6 += '<div class="restriction-grid">';
+              if (d.max_height_meters) b6 += '<div class="r-cell"><span class="r-label">최고높이</span><span class="r-value">' + d.max_height_meters + 'm</span></div>';
+              if (d.max_floors) b6 += '<div class="r-cell"><span class="r-label">최고층수</span><span class="r-value">' + d.max_floors + '층</span></div>';
+              b6 += '</div>';
+            }
+            if (d.height_restrictions_detail) b6 += '<p style="margin:4px 0 0">' + d.height_restrictions_detail + '</p>';
+            cats += catBlock(6, '높이제한', b6);
+          }
+          var hasCat7 = (d.construction_restrictions && d.construction_restrictions.length) || (d.development_restrictions && d.development_restrictions.length) || d.setback_requirements || (d.other_notes && d.other_notes.length);
+          if (hasCat7) {
+            var b7 = '';
+            if (d.construction_restrictions && d.construction_restrictions.length) b7 += '<strong>건축 제한:</strong>' + listHtml(d.construction_restrictions);
+            if (d.development_restrictions && d.development_restrictions.length) b7 += '<strong>개발 제한:</strong>' + listHtml(d.development_restrictions);
+            if (d.setback_requirements) b7 += '<strong>이격거리/건축선:</strong><p style="margin:0">' + d.setback_requirements + '</p>';
+            if (d.other_notes && d.other_notes.length) b7 += '<strong>기타:</strong>' + listHtml(d.other_notes);
+            cats += catBlock(7, '그 밖의 건축/개발 제한사항', b7);
+          }
+          if (cats) {
+            html += '<div class="ai-categories">' + cats + '</div>';
+          } else {
+            html += '<p class="ai-no-data">상세 건축 제한사항이 추출되지 않았습니다.</p>';
+          }
+          if (d.key_changes && d.key_changes.length) html += '<div class="changes-box" style="margin-top:10px"><strong>주요 변경:</strong>' + listHtml(d.key_changes) + '</div>';
+          return html;
         }
 
         function backToModeSelect() {
