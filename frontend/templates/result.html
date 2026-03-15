@@ -571,6 +571,7 @@
             <button class="ai-back-btn" onclick="backToModeSelect()">← 분석 방법 선택</button>
             <div id="aiManualSections"></div>
           </div>
+          <div id="aiManualOutput"></div>
         </div>
         <script>
         var _pending = {{ _ai_pending_tabs | tojson }};
@@ -803,7 +804,7 @@
         }
 
         function renderManualResults() {
-          var el = document.getElementById('aiResult');
+          var el = document.getElementById('aiManualOutput');
           var hasG = _manualResults.gyeoljeong;
           var hasY = _manualResults.yeolam;
           if (!hasG && !hasY) return;
