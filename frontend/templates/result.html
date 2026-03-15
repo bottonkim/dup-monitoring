@@ -563,30 +563,13 @@
           {# 직접 분석 UI #}
           <div id="aiManualUI" style="display:none">
             <button class="ai-back-btn" onclick="backToModeSelect()">← 분석 방법 선택</button>
-            <div class="ai-manual-steps">
-              <div class="ai-manual-step">
-                <span class="ai-step-num">1</span>
-                <span>프롬프트를 복사하세요</span>
-                <div class="ai-manual-actions">
-                  <button class="ai-copy-btn" id="aiCopyBtn" onclick="copyPrompt()">프롬프트 복사</button>
-                  <a href="https://claude.ai/new" target="_blank" class="ai-link-btn">claude.ai 열기</a>
-                </div>
-                <div id="aiPromptStatus" class="ai-prompt-status"></div>
-                <div id="aiPdfLinks" class="ai-pdf-box" style="display:none"></div>
-              </div>
-              <div class="ai-manual-step">
-                <span class="ai-step-num">2</span>
-                <span>Claude의 응답(JSON)을 붙여넣으세요</span>
-                <textarea id="aiManualResult" class="ai-manual-textarea" rows="6" placeholder='{"zone_name": "...", "building_coverage_ratio": "...", ...}'></textarea>
-                <button class="ai-apply-btn" onclick="applyManualResult()">결과 적용</button>
-                <div id="aiManualError" class="ai-manual-error"></div>
-              </div>
-            </div>
+            <div id="aiManualSections"></div>
           </div>
         </div>
         <script>
         var _pending = {{ _ai_pending_tabs | tojson }};
-        var _manualPromptText = '';
+        var _manualPrompts = {};  // {gyeoljeong: "...", yeolam: "..."}
+        var _manualResults = {};  // {gyeoljeong: {...}, yeolam: {...}}
 
         function startAutoAnalysis() {
           document.getElementById('aiModeSelect').style.display = 'none';
@@ -713,7 +696,8 @@
         function startManualAnalysis() {
           document.getElementById('aiModeSelect').style.display = 'none';
           document.getElementById('aiManualUI').style.display = 'block';
-          document.getElementById('aiPromptStatus').textContent = '프롬프트 생성 중...';
+          var container = document.getElementById('aiManualSections');
+          container.innerHTML = '<div class="ai-prompt-status">프롬프트 생성 중...</div>';
           fetch('/api/build-analysis-prompt', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -722,44 +706,60 @@
           .then(function(r) { return r.json(); })
           .then(function(data) {
             if (data.error) {
-              document.getElementById('aiPromptStatus').textContent = data.error;
+              container.innerHTML = '<div class="ai-prompt-status">' + data.error + '</div>';
               return;
             }
-            // 첫 번째 가용 프롬프트 사용
-            var keys = Object.keys(data.prompts);
-            _manualPromptText = data.prompts[keys[0]];
-            document.getElementById('aiPromptStatus').textContent = '프롬프트 준비 완료 (' + _manualPromptText.length.toLocaleString() + '자)';
-            document.getElementById('aiCopyBtn').disabled = false;
-            // PDF 첨부 안내
-            var pdfBox = document.getElementById('aiPdfLinks');
+            _manualPrompts = data.prompts;
+            var labels = {gyeoljeong: '결정고시', yeolam: '열람공고'};
+            var html = '';
+            // PDF 링크 (공통)
             if (data.pdf_urls && data.pdf_urls.length > 0) {
-              var html = '<strong>첨부 PDF 다운로드:</strong> Claude에 파일 첨부하면 정확도가 높아집니다.<br>';
+              html += '<div class="ai-pdf-box"><strong>첨부 PDF 다운로드:</strong> Claude에 파일 첨부하면 정확도가 높아집니다.<br>';
               data.pdf_urls.forEach(function(u, i) {
                 var name = decodeURIComponent(u.split('/').pop().split('?')[0]) || ('PDF ' + (i+1));
                 if (name.length > 40) name = name.substring(0, 37) + '...';
                 html += '<a href="' + u + '" target="_blank" class="ai-pdf-dl">' + name + '</a> ';
               });
-              pdfBox.innerHTML = html;
-              pdfBox.style.display = 'block';
+              html += '</div>';
             }
+            html += '<a href="https://claude.ai/new" target="_blank" class="ai-link-btn" style="margin-bottom:10px;display:inline-block">claude.ai 열기</a>';
+            // 각 탭별 섹션
+            var keys = Object.keys(data.prompts);
+            keys.forEach(function(key) {
+              var label = labels[key] || key;
+              html += '<div class="ai-manual-section">';
+              html += '<div class="ai-manual-section-header">' + label + '</div>';
+              html += '<div class="ai-manual-step">';
+              html += '<span class="ai-step-num">1</span><span>프롬프트를 복사하세요</span>';
+              html += '<div class="ai-manual-actions"><button class="ai-copy-btn" onclick="copyPrompt(\'' + key + '\', this)">프롬프트 복사</button></div>';
+              html += '<div class="ai-prompt-status">' + data.prompts[key].length.toLocaleString() + '자</div>';
+              html += '</div>';
+              html += '<div class="ai-manual-step">';
+              html += '<span class="ai-step-num">2</span><span>Claude의 응답(JSON)을 붙여넣으세요</span>';
+              html += '<textarea id="aiManualResult_' + key + '" class="ai-manual-textarea" rows="5" placeholder=\'{"zone_name": "...", "building_coverage_ratio": "...", ...}\'></textarea>';
+              html += '<button class="ai-apply-btn" onclick="applyManualResult(\'' + key + '\')">결과 적용</button>';
+              html += '<div id="aiManualError_' + key + '" class="ai-manual-error"></div>';
+              html += '</div></div>';
+            });
+            container.innerHTML = html;
           })
           .catch(function() {
-            document.getElementById('aiPromptStatus').textContent = '프롬프트 생성 실패';
+            container.innerHTML = '<div class="ai-prompt-status">프롬프트 생성 실패</div>';
           });
         }
 
-        function copyPrompt() {
-          if (!_manualPromptText) return;
-          var btn = document.getElementById('aiCopyBtn');
+        function copyPrompt(key, btn) {
+          var text = _manualPrompts[key];
+          if (!text) return;
           function onSuccess() {
             btn.textContent = '복사됨!';
             setTimeout(function() { btn.textContent = '프롬프트 복사'; }, 2000);
           }
           if (navigator.clipboard && window.isSecureContext) {
-            navigator.clipboard.writeText(_manualPromptText).then(onSuccess);
+            navigator.clipboard.writeText(text).then(onSuccess);
           } else {
             var ta = document.createElement('textarea');
-            ta.value = _manualPromptText;
+            ta.value = text;
             ta.style.position = 'fixed';
             ta.style.left = '-9999px';
             document.body.appendChild(ta);
@@ -770,11 +770,10 @@
           }
         }
 
-        function applyManualResult() {
-          var raw = document.getElementById('aiManualResult').value.trim();
-          var errEl = document.getElementById('aiManualError');
+        function applyManualResult(key) {
+          var raw = document.getElementById('aiManualResult_' + key).value.trim();
+          var errEl = document.getElementById('aiManualError_' + key);
           if (!raw) { errEl.textContent = 'JSON을 붙여넣어주세요.'; return; }
-          // 마크다운 코드블록 제거
           if (raw.startsWith('```')) {
             raw = raw.replace(/^```json?\n?/, '').replace(/\n?```$/, '');
           }
@@ -785,17 +784,36 @@
             return;
           }
           errEl.textContent = '';
-          var el = document.getElementById('aiResult');
-          var html = '<div class="ai-header"><span class="ai-badge">AI 분석</span><span class="ai-source">건축 제한사항 요약</span></div>';
-          html += '<div class="ai-tab-label">직접 분석</div>' + buildTabHtml(data);
-          el.className = 'ai-restriction-summary';
-          el.innerHTML = html;
+          _manualResults[key] = data;
           // 세부 구역 반영
           if (data.sub_zone) {
             document.querySelectorAll('.ai-sub-zone-slot').forEach(function(slot) {
               slot.innerHTML = '<br><small class="zone-sub">\u21B3 ' + data.sub_zone + '</small>';
             });
           }
+          renderManualResults();
+        }
+
+        function renderManualResults() {
+          var el = document.getElementById('aiResult');
+          var hasG = _manualResults.gyeoljeong;
+          var hasY = _manualResults.yeolam;
+          if (!hasG && !hasY) return;
+          var html = '<div class="ai-header"><span class="ai-badge">AI 분석</span><span class="ai-source">건축 제한사항 요약 (직접 분석)</span></div>';
+          if (hasG && hasY) {
+            html += '<div class="ai-tabs">';
+            html += '<button class="ai-tab ai-tab-active" data-tab="gyeoljeong">결정고시</button>';
+            html += '<button class="ai-tab" data-tab="yeolam">열람공고</button>';
+            html += '</div>';
+            html += '<div class="ai-tab-panel" data-panel="gyeoljeong">' + buildTabHtml(_manualResults.gyeoljeong) + '</div>';
+            html += '<div class="ai-tab-panel" data-panel="yeolam" style="display:none">' + buildTabHtml(_manualResults.yeolam) + '</div>';
+          } else if (hasG) {
+            html += '<div class="ai-tab-label">결정고시</div>' + buildTabHtml(_manualResults.gyeoljeong);
+          } else {
+            html += '<div class="ai-tab-label">열람공고</div>' + buildTabHtml(_manualResults.yeolam);
+          }
+          el.className = 'ai-restriction-summary';
+          el.innerHTML = html;
         }
         </script>
         {% elif _ai_pending and not (ns_tabs.yeolam or ns_tabs.gyeoljeong) %}
