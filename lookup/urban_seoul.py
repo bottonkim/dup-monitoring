@@ -105,10 +105,10 @@ def fetch_zone_names(pnu: str, timeout: int = 20) -> list[dict]:
         upis_pnu = _to_upis_pnu(pnu)
 
         # Step 1: 필지 geometry 취득 (LP_PA_CBND layer 1)
-        bbox = _get_parcel_bbox(sess, upis_pnu, timeout)
+        bbox, _ = _get_parcel_bbox(sess, upis_pnu, timeout)
         if not bbox:
             # 원본 PNU로도 시도
-            bbox = _get_parcel_bbox(sess, pnu, timeout)
+            bbox, _ = _get_parcel_bbox(sess, pnu, timeout)
         if not bbox:
             logger.debug(f"urban.seoul.go.kr: PNU={pnu} 필지 좌표 조회 실패")
             return []
@@ -159,7 +159,8 @@ def fetch_zone_names(pnu: str, timeout: int = 20) -> list[dict]:
 
 
 def _get_parcel_bbox(sess: requests.Session, pnu: str, timeout: int):
-    """LP_PA_CBND (layer 1)에서 PNU로 필지 bbox 취득. Returns (xmin, ymin, xmax, ymax) or None."""
+    """LP_PA_CBND (layer 1)에서 PNU로 필지 bbox + 중심점 취득.
+    Returns ((xmin, ymin, xmax, ymax), (cx, cy)) or (None, None)."""
     target = (
         f"{_ARCGIS_BASE}/1/query"
         f"?where=PNU%3D%27{pnu}%27"
@@ -170,11 +171,30 @@ def _get_parcel_bbox(sess: requests.Session, pnu: str, timeout: int):
     data = resp.json()
     features = data.get("features", [])
     if not features:
-        return None
+        return None, None
     rings = features[0]["geometry"]["rings"][0]
     xs = [p[0] for p in rings]
     ys = [p[1] for p in rings]
-    return (min(xs) - 5, min(ys) - 5, max(xs) + 5, max(ys) + 5)
+    bbox = (min(xs) - 5, min(ys) - 5, max(xs) + 5, max(ys) + 5)
+    centroid = (sum(xs) / len(xs), sum(ys) / len(ys))
+    return bbox, centroid
+
+
+def _point_in_polygon(px, py, rings):
+    """Ray-casting으로 점이 폴리곤 내부에 있는지 판별."""
+    for ring in rings:
+        inside = False
+        n = len(ring)
+        j = n - 1
+        for i in range(n):
+            xi, yi = ring[i]
+            xj, yj = ring[j]
+            if ((yi > py) != (yj > py)) and (px < (xj - xi) * (py - yi) / (yj - yi) + xi):
+                inside = not inside
+            j = i
+        if inside:
+            return True
+    return False
 
 
 def _query_zone_layers(
@@ -182,19 +202,23 @@ def _query_zone_layers(
     xmin: float, ymin: float, xmax: float, ymax: float,
     wtnnc_map: dict,
     timeout: int,
+    centroid: tuple = None,
 ):
-    """각 UPIS 구역 레이어에서 교차 피처의 WTNNC_SN 수집."""
+    """각 UPIS 구역 레이어에서 교차 피처의 WTNNC_SN 수집.
+    centroid가 주어지면 폴리곤 포함 여부로 필터링."""
     geom_env = {
         "xmin": xmin, "ymin": ymin, "xmax": xmax, "ymax": ymax,
         "spatialReference": {"wkid": 102086},
     }
+    # centroid가 있으면 geometry를 받아서 후처리 필터링
+    need_geom = centroid is not None
     q_geom = (
         f"geometry={quote(json.dumps(geom_env))}"
         f"&geometryType=esriGeometryEnvelope"
         f"&inSR=102086"
         f"&spatialRel=esriSpatialRelIntersects"
         f"&outFields=WTNNC_SN,PRESENT_SN,DGM_NM"
-        f"&returnGeometry=false&f=json"
+        f"&returnGeometry={'true' if need_geom else 'false'}&f=json"
     )
 
     for lid, (lname, _) in _QUERY_LAYERS.items():
@@ -216,6 +240,9 @@ def _query_zone_layers(
                         fys = [p[1] for p in rings[0]]
                         if not (max(fxs) < xmin or min(fxs) > xmax or
                                 max(fys) < ymin or min(fys) > ymax):
+                            # centroid 필터: 중심점이 폴리곤 안에 있는지 확인
+                            if centroid and not _point_in_polygon(centroid[0], centroid[1], rings):
+                                continue
                             wt = f["attributes"].get("WTNNC_SN", "")
                             if wt and wt not in wtnnc_map:
                                 wtnnc_map[wt] = lname
@@ -225,8 +252,14 @@ def _query_zone_layers(
                 data = resp.json()
                 for f in data.get("features", []):
                     wt = f["attributes"].get("WTNNC_SN", "")
-                    if wt and wt not in wtnnc_map:
-                        wtnnc_map[wt] = lname
+                    if not wt or wt in wtnnc_map:
+                        continue
+                    # centroid 필터
+                    if centroid:
+                        rings = f.get("geometry", {}).get("rings", [])
+                        if rings and not _point_in_polygon(centroid[0], centroid[1], rings):
+                            continue
+                    wtnnc_map[wt] = lname
         except Exception as e:
             logger.debug(f"Layer {lid} ({lname}) 조회 오류: {e}")
 
@@ -314,16 +347,16 @@ def fetch_zone_data(pnu: str, timeout: int = 20) -> dict:
     try:
         upis_pnu = _to_upis_pnu(pnu)
 
-        bbox = _get_parcel_bbox(sess, upis_pnu, timeout)
+        bbox, centroid = _get_parcel_bbox(sess, upis_pnu, timeout)
         if not bbox:
-            bbox = _get_parcel_bbox(sess, pnu, timeout)
+            bbox, centroid = _get_parcel_bbox(sess, pnu, timeout)
         if not bbox:
             return result
 
         xmin, ymin, xmax, ymax = bbox
 
         wtnnc_map: dict[str, str] = {}
-        _query_zone_layers(sess, xmin, ymin, xmax, ymax, wtnnc_map, timeout)
+        _query_zone_layers(sess, xmin, ymin, xmax, ymax, wtnnc_map, timeout, centroid=centroid)
 
         if not wtnnc_map:
             return result
