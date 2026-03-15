@@ -769,6 +769,21 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
             # 2) core_combined: zone_core 포함 + 합본 고시 (제목에 콤마)
             # 3) kw_matched: primary_kw만 포함
             # 4) fallback: 관련 카테고리이지만 키워드 미매칭
+            import re as _re
+            # 검색 지번 추출 (예: "1383")
+            _searched_jibun = address.split()[-1] if address else ""
+            # 제목에 특정 지번이 명시된 고시 감지 (예: "숭인동 280번지 일대")
+            _JIBUN_PAT = _re.compile(r'(\d{1,5})(?:-\d+)?(?:\s*번지|\s*일대)')
+
+            def _is_different_parcel(title_str):
+                """제목에 특정 지번이 있는데 검색 지번과 다르면 True"""
+                if not _searched_jibun:
+                    return False
+                jibun_matches = _JIBUN_PAT.findall(title_str)
+                if not jibun_matches:
+                    return False  # 지번 언급 없음 → 구역 전체 고시
+                return _searched_jibun not in jibun_matches
+
             y_cf, y_cc, y_kw, y_fb = None, None, None, None
             g_cf, g_cc, g_kw, g_fb = None, None, None, None
             for ann in result["announcements"]:
@@ -779,6 +794,9 @@ def _sync_lookup(address: str, settings, db_path: Path) -> dict:
                     continue
                 cn = ann.get("raw_content") or ann.get("cn_content") or ann.get("body") or ""
                 if (not cn and not title) or not primary_zone:
+                    continue
+                # 제목에 다른 지번이 명시된 고시는 스킵
+                if _is_different_parcel(title):
                     continue
                 is_yeolam = "열람" in cat or ("공고" in cat and "결정" not in cat) or "열람" in title
                 is_combined = "," in title  # 합본 고시 감지
