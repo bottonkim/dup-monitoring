@@ -646,6 +646,17 @@ a:hover { text-decoration: underline; }
   animation: ai-badge-pulse 2s ease-in-out infinite;
   vertical-align: middle;
 }
+.ai-category-badge {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 8px;
+  font-weight: 700;
+  color: #fff;
+  vertical-align: middle;
+  margin-left: 3px;
+}
+.ai-cat-결정 { background: #d97706; }
+.ai-cat-열람 { background: #2563eb; }
 @keyframes ai-badge-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.7; }

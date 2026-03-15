@@ -293,7 +293,8 @@
                 {% for src in h.sources %}<span class="history-src history-src-{{ src }}">{{ src }}</span>{% endfor %}
                 {% endif %}
                 {% if h.ai_target is defined and h.ai_target %}
-                <span class="ai-target-badge">AI 분석 ({{ h.ai_target }})</span>
+                <span class="ai-target-badge">AI 분석</span>
+                <span class="ai-category-badge ai-cat-{{ '열람' if '열람' in h.ai_target else '결정' }}">{{ h.ai_target }}</span>
                 {% endif %}
               </div>
               {% if h.desc_detail %}
