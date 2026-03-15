@@ -160,12 +160,14 @@ def analyze_pdf(
 
     client = anthropic.Anthropic(api_key=api_key)
 
+    _system_cached = [{"type": "text", "text": _SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}]
+
     try:
         message = client.messages.create(
             model=model,
             max_tokens=max_tokens,
             temperature=0,
-            system=_SYSTEM_PROMPT,
+            system=_system_cached,
             messages=[{"role": "user", "content": user_msg}],
         )
         raw = message.content[0].text.strip()
@@ -286,12 +288,14 @@ def analyze_image_pdf(
         pdf_text="(이미지 기반 PDF - 위 이미지에서 직접 추출)",
     )})
 
+    _system_cached = [{"type": "text", "text": _SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}]
+
     try:
         message = client.messages.create(
             model=model,
             max_tokens=max_tokens,
             temperature=0,
-            system=_SYSTEM_PROMPT,
+            system=_system_cached,
             messages=[{"role": "user", "content": content}],
         )
         raw = message.content[0].text.strip()

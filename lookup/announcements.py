@@ -319,11 +319,12 @@ def analyze_announcement_with_claude(
 
     try:
         client = anthropic.Anthropic(api_key=api_key)
+        system_cached = [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]
         message = client.messages.create(
             model=model,
             max_tokens=2048,
             temperature=0,
-            system=system,
+            system=system_cached,
             messages=[{"role": "user", "content": prompt}],
         )
         raw = message.content[0].text.strip()
