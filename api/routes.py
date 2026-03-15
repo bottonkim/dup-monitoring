@@ -272,7 +272,13 @@ def _run_gazette_analysis_inner(
         logger.info(f"3차(고시공고) 실질 내용 없음 → 4차(첨부 PDF)/5차(시보) 시도")
 
     # 4차: 첨부 PDF 즉시 분석 (1-30MB, subprocess 불필요)
-    pdf_title = f"{ann_title} [분석 대상: {sub_zone}]" if sub_zone and sub_zone not in ann_title else ann_title
+    # 4차/5차 PDF 분석 시에도 세부 구역/필지 정보 전달
+    focus_parts = []
+    if sub_zone:
+        focus_parts.append(sub_zone)
+    if dong_jibun:
+        focus_parts.append(f"필지: {dong_jibun}")
+    pdf_title = f"{ann_title} [분석 대상: {', '.join(focus_parts)}]" if focus_parts else ann_title
     if pdf_urls:
         try:
             from lookup.pdf_quick_analyze import analyze_small_pdf
