@@ -93,8 +93,7 @@
             {% endfor %}
             {# 다른 법령 구역 (특별계획구역은 국토계획법 섹션에서 서브로 표시됨 → 중복 제거) #}
             {% for zone in zones %}
-              {% if zone.layer == 'lt_c_ud502' %}{% continue %}{% endif %}
-              {% if zone.law_category == '다른 법령' or zone.source == 'urban_seoul' %}
+              {% if zone.layer != 'lt_c_ud502' and (zone.law_category == '다른 법령' or zone.source == 'urban_seoul') %}
                 {% if not ns.other_printed %}
                   {% set ns.other_printed = true %}
                   <tr class="zone-law-header"><td colspan="4">「다른 법령 등」에 따른 지역·지구 등</td></tr>
